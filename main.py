@@ -38,18 +38,6 @@ def get_posts():
     return{"data":posts}
 
 
-@app.get("/posts/{id}")
-def get_posts(id: int):
-    cursor.execute("""SELECT * FROM posts WHERE id = %s""", (id,))
-    test_post = cursor.fetchone()
-
-    if not test_post:
-        return {"error": "Post not found"}, 404
-
-    # Return the fetched row directly
-    return {"data": dict(test_post)}
-
-
 @app.post("/createposts")
 def create_posts(new_post:posts):
     cursor.execute("""INSERT INTO posts(title,content,published)VALUES(%s,%s,%s)
@@ -58,4 +46,36 @@ def create_posts(new_post:posts):
     conn.commit()
    
     return{"data": new_posts}
+
+
+@app.get("/posts/{id}")
+def get_posts(id: int):
+    cursor.execute("""SELECT * FROM posts WHERE id = %s""", (id,))
+    test_post = cursor.fetchone()
+
+    if not test_post:
+        return {"error": f"Post with  id of {id} not found"}, 404
+
+    # Return the fetched row directly
+   
+
+@app.delete("/posts/{id}")
+def delete_posts(id:int):
+    cursor.execute("""DELETE FROM posts WHERE id =%s RETURNING *""",(id,))
+    deleted_post=cursor.fetchone()
+    conn.commit()
+    if not deleted_post:
+            return {"error": f"Post with id {id} not found"}, 404
+    else:
+            return {"message": "Post deleted successfully"}
+
+    
+
+
+
+
+   
+
+
+
             

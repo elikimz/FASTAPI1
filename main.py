@@ -7,7 +7,7 @@ import psycopg2
 
 app=FastAPI()
 
-class Posts(BaseModel):
+class posts(BaseModel):
     title:str
     content:str
     published:bool=True
@@ -32,10 +32,30 @@ def root():
 
 @app.get("/posts")
 def get_posts():
-    return{"data":"This is your posts"}
+    cursor.execute("""SELECT * FROM posts""")
+    posts=cursor.fetchall()
+    # print(posts)
+    return{"data":posts}
+
+
+@app.get("/posts/{id}")
+def get_posts(id: int):
+    cursor.execute("""SELECT * FROM posts WHERE id = %s""", (id,))
+    test_post = cursor.fetchone()
+
+    if not test_post:
+        return {"error": "Post not found"}, 404
+
+    # Return the fetched row directly
+    return {"data": dict(test_post)}
+
 
 @app.post("/createposts")
-def create_posts(new_post:Posts):
-    print(new_post.dict())
-    return{"data": new_post}
+def create_posts(new_post:posts):
+    cursor.execute("""INSERT INTO posts(title,content,published)VALUES(%s,%s,%s)
+    RETURNING*""",(new_post.title,new_post.content,new_post.published))
+    new_posts=cursor.fetchone()
+    conn.commit()
+   
+    return{"data": new_posts}
             

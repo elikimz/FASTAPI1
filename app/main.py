@@ -7,10 +7,10 @@ from psycopg2.extras import  RealDictCursor
 import psycopg2
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
-from .import model
+from .import models
 from .database import engine,get_db
 
-model.Base.metadata.create_all(bind=engine)
+models.Base.metadata.create_all(bind=engine)
 
 app=FastAPI()
 
@@ -22,6 +22,7 @@ class posts(BaseModel):
     content:str
     published:bool=True
     rating:Optional[int]=None
+
 
 
 try:
@@ -41,11 +42,12 @@ def root():
     return {"message": "Welcome to my FASTAPI"}
 
 @app.get("/posts")
-def get_posts():
-    cursor.execute("""SELECT * FROM posts""")
-    posts=cursor.fetchall()
+def get_posts(db:Session = Depends(get_db)):
+    
+    posts=db.query(models.Post).all()
     # print(posts)
     return{"data":posts}
+
 
 @app.get("/posts/{id}")
 def get_posts(id: int):
@@ -61,20 +63,22 @@ def get_posts(id: int):
        
     # Return the fetched row directly
 
-
-@app.get("/test")
-def test_posts(db:Session = Depends(get_db)):
-     return {"status":"success"}   
+ 
 
 
 @app.post("/createposts")
-def create_posts(new_post:posts):
-    cursor.execute("""INSERT INTO posts(title,content,published)VALUES(%s,%s,%s)
-    RETURNING*""",(new_post.title,new_post.content,new_post.published))
-    new_posts=cursor.fetchone()
-    conn.commit()
+def create_posts(new_post:posts,db:Session = Depends(get_db)):
+  new_posts= models.Post(
+       title=new_post.title,
+       content=new_post.content,
+       published=new_post.published,
+       rating=new_post.rating
+           )
+  db.add(new_posts) 
+  db.commit()
+  db.refresh(new_posts)
    
-    return{"data": new_posts}
+  return{"data": new_posts}
 
 
 

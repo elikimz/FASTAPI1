@@ -33,7 +33,7 @@ except Exception as error:
 def root():
     return {"message": "Welcome to my FASTAPI"}
 
-@app.get("/posts")
+@app.get("/posts",response_model=list[schemas.Post])
 def get_posts(db:Session = Depends(get_db)):
     
     posts=db.query(models.Post).all()

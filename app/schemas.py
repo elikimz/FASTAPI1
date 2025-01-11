@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 
@@ -27,5 +27,27 @@ class Post(BaseModel):
     created_at:datetime
     updated_at:datetime
 
+    class config:
+        orm_mode=True
+
+
+# user create
+
+class UserCreate(BaseModel):
+    email:EmailStr
+    password:str
+    username:str
+    is_active:bool
+
+    
+    # USER RESPONSE
+
+class UserResponse(BaseModel):
+    id:int
+    email:EmailStr  
+    username:str
+    is_active:bool
+    created_at:datetime
+    
     class config:
         orm_mode=True

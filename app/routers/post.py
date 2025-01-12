@@ -49,7 +49,7 @@ def create_posts(new_post:schemas.PostCreate,db:Session = Depends(get_db)):
   db.commit()
   db.refresh(new_posts)
    
-  return new_posts
+
 
 
 

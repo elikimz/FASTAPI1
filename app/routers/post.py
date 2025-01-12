@@ -5,16 +5,17 @@ from ..import models,schemas
 from ..database import get_db
 
 router=APIRouter(
-    prefix="/posts"
+    tags=['POSTS']
+
 )
 
-# @router.get("/")
-# def root():
-#     return {"message": "Welcome to my FASTAPI"}
+@router.get("/", tags=["DEFAULT"])
+def root():
+    return {"message": "Welcome to my FASTAPI"}
 
 
 
-@router.get("/",response_model=list[schemas.Post])
+@router.get("/posts/",response_model=list[schemas.Post])
 def get_posts(db:Session = Depends(get_db)):
     
     posts=db.query(models.Post).all()
@@ -22,7 +23,7 @@ def get_posts(db:Session = Depends(get_db)):
 
 
 
-@router.get("/{id}")
+@router.get("/posts/{id}")
 def get_posts(id: int,db:Session = Depends(get_db)):
    test_post= db.query(models.Post).filter(models.Post.id== id).first()
    print(test_post)
@@ -39,7 +40,7 @@ def get_posts(id: int,db:Session = Depends(get_db)):
  
 
 
-@router.post("/",response_model=schemas.Post)
+@router.post("/posts/",response_model=schemas.Post)
 def create_posts(new_post:schemas.PostCreate,db:Session = Depends(get_db)):
   new_posts= models.Post(
        **new_post.dict()
@@ -54,7 +55,7 @@ def create_posts(new_post:schemas.PostCreate,db:Session = Depends(get_db)):
 
    
 
-@router.delete("/{id}")
+@router.delete("/posts/{id}")
 def delete_posts(id:int,db:Session = Depends(get_db)):
     
     deleted_post=db.query(models.Post).filter(models.Post.id== id).first()
@@ -71,7 +72,7 @@ def delete_posts(id:int,db:Session = Depends(get_db)):
    
 
 
-@router.put("/{id}")
+@router.put("/posts/{id}")
 def update_posts(id:int,post:schemas.PostUpdate,db:Session = Depends(get_db)):
 
     updated_query=db.query(models.Post).filter(models.Post.id == id)

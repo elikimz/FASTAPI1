@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional,Union
 from pydantic import BaseModel, EmailStr
 
 
@@ -27,7 +27,7 @@ class Post(BaseModel):
     created_at:datetime
     updated_at:datetime
 
-    class config:
+    class Config:
         orm_mode=True
 
 
@@ -55,6 +55,17 @@ class UserResponse(BaseModel):
 
 # User LOGIN
 
-class Userlogin(BaseModel):
+class UserLogin(BaseModel):
     email:EmailStr
     password:str
+
+    # TOKEN
+
+class Token(BaseModel):
+        access_token:str
+        token_type:str
+
+        
+        # token response
+class TokenData(BaseModel):
+        id:Optional[Union[str,int]]=None

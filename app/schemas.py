@@ -51,3 +51,10 @@ class UserResponse(BaseModel):
     
     class config:
         orm_mode=True
+
+
+# User LOGIN
+
+class Userlogin(BaseModel):
+    email:EmailStr
+    password:str

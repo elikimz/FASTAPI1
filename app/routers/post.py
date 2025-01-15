@@ -36,9 +36,14 @@ def get_post_by_id(
 def create_post(
     new_post: schemas.PostCreate,
     db: Session = Depends(get_db),
-    current_user: int = Depends(oauth2.get_current_user),
+    current_user:int = Depends(oauth2.get_current_user)
+       
 ):
-    post = models.Post(**new_post.dict())
+    print(f"Current user: {current_user}")  # Debug current_user
+    print(f"Current user ID: {current_user.id}")
+
+   
+    post = models.Post(**new_post.dict(),user_id=current_user.id)
     db.add(post)
     db.commit()
     db.refresh(post)

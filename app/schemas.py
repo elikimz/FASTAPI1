@@ -9,6 +9,7 @@ class PostBase(BaseModel):
     content:str
     published:bool=True
     rating:Optional[int]=None 
+ 
 
 class PostCreate(PostBase):
     pass    
@@ -26,6 +27,7 @@ class Post(BaseModel):
     rating:Optional[int]=None 
     created_at:datetime
     updated_at:datetime
+    user_id:int
 
     class Config:
         orm_mode=True

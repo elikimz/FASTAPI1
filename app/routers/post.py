@@ -70,7 +70,7 @@ def delete_post(
 
     db.delete(post)
     db.commit()
-    return {"message": "Post deleted successfully"}
+    return {"message": "Post delete successfully"}
 
 @router.put("/posts/{id}", response_model=schemas.Post)
 def update_post(

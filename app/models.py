@@ -1,5 +1,6 @@
 from .database import Base
 from sqlalchemy import TIMESTAMP, Boolean, Column, Float, Integer, String, text,ForeignKey
+from sqlalchemy.orm import relationship
 
 class Post(Base):
     __tablename__ = "posts"
@@ -13,7 +14,8 @@ class Post(Base):
     updated_at=Column(TIMESTAMP(timezone=True),nullable=False,server_default=text('now()'))
 
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
-
+    
+    owner=relationship('User')
 
 
 class User(Base):

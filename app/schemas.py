@@ -15,7 +15,20 @@ class PostCreate(PostBase):
     pass    
 
 class PostUpdate(PostBase):
-    pass
+    title:str
+    content:str
+    published:bool=True
+    rating:Optional[int]=None 
+  
+class UserResponse(BaseModel):
+    id:int
+    email:EmailStr  
+    username:str
+    is_active:bool
+    created_at:datetime
+    
+    class config:
+        orm_mode=True  
 
 
 # post response
@@ -29,6 +42,8 @@ class Post(BaseModel):
     updated_at:datetime
     user_id:int
 
+    
+    owner:UserResponse
     class Config:
         orm_mode=True
 
@@ -44,15 +59,7 @@ class UserCreate(BaseModel):
     
     # USER RESPONSE
 
-class UserResponse(BaseModel):
-    id:int
-    email:EmailStr  
-    username:str
-    is_active:bool
-    created_at:datetime
-    
-    class config:
-        orm_mode=True
+
 
 
 # User LOGIN

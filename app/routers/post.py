@@ -55,14 +55,16 @@ def delete_post(
     db: Session = Depends(get_db),
     current_user: int = Depends(oauth2.get_current_user),
 ):
-    post = db.query(models.Post).filter(models.Post.id == id).first()
+    post_query = db.query(models.Post).filter(models.Post.id == id)
+    
+    post=post_query.first()
     if not post:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Post with id {id} does not exist",
     
         )
-    if post.user_id != oauth2.get_current_user.id:
+    if post.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,detail="Not authorised to perform requested action"
         )
@@ -86,6 +88,11 @@ def update_post(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Post with id {id} does not exist",
         )
+    if existing_post.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,detail="Not authorised to perform requested action"
+        )
+
     query.update(post.dict(), synchronize_session=False)
     db.commit()
     db.refresh(existing_post)

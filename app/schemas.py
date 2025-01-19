@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Optional,Union
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, validator
+from pydantic.types import conint
+
 
 
 
@@ -78,3 +80,15 @@ class Token(BaseModel):
         # token response
 class TokenData(BaseModel):
         id:Optional[Union[str,int]]=None
+
+
+# Vote model
+class Vote(BaseModel):
+    post_id: int
+    dir: int
+
+    @validator("dir")
+    def validate_dir(cls, value):
+        if value not in (0, 1):
+            raise ValueError("dir must be 0 or 1")
+        return value

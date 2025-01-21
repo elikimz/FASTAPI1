@@ -12,4 +12,4 @@ router=APIRouter(
 def vote(vote:schemas.Vote,db:Session=Depends(database.get_db),current_user:int =Depends(oauth2.get_current_user)):
     if (vote.dir==1):
         db.query(models.Vote).filter(models.Vote.post_id==vote.post_id)
-     
+    else:   

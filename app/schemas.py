@@ -43,12 +43,19 @@ class Post(BaseModel):
     created_at:datetime
     updated_at:datetime
     user_id:int
+   
 
     
     owner:UserResponse
     class Config:
         orm_mode=True
 
+class PostOut(BaseModel):
+     post:Post
+     votes:int
+     class Config:
+        orm_mode=True
+     
 
 # user create
 

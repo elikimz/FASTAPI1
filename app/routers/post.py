@@ -3,20 +3,31 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..database import get_db
 from . import oauth2
-
+from sqlalchemy import func
 router = APIRouter(tags=["POSTS"])
 
 @router.get("/", tags=["DEFAULT"])
 def root():
     return {"message": "Welcome to my FASTAPI"}
 
-@router.get("/posts/", response_model=list[schemas.Post])
+@router.get("/posts")
 def get_posts(
     db: Session = Depends(get_db),
     current_user: int = Depends(oauth2.get_current_user),
 ):
     posts = db.query(models.Post).all()
-    return posts
+
+    # Collect the posts and their vote counts
+    results = db.query(models.Post, func.count(models.Vote.post_id).label("votes")).join(
+        models.Vote, models.Vote.post_id == models.Post.id, isouter=True
+    ).group_by(models.Post.id).all()
+
+    # Create a response structure that can be serialized
+    return [
+        {"post": post, "votes": votes} 
+        for post, votes in results
+    ]
+
 
 @router.get("/posts/{id}", response_model=schemas.Post)
 def get_post_by_id(

@@ -85,7 +85,7 @@ def delete_post(
         )
     if post.user_id != current_user.id:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,detail="Not authorised to perform requested action"
+            status_code=status.HTTP_403_FORBIDDEN,detail="Not authorisedg to perform requested action"
         )
 
 

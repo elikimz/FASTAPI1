@@ -45,15 +45,15 @@ app.include_router(vote.router)
 
 
 
-try:
-     conn = psycopg2.connect(host='localhost', database='postgres',user="postgres", password='40284433',
-     cursor_factory=RealDictCursor)
-     cursor = conn.cursor()
-     print("Database connected successfully")
-except Exception as error:
-    print("Connection to database failed") 
-    print("Error:",error) 
-    time.sleep(2)   
+# try:
+#      conn = psycopg2.connect(host='localhost', database='postgres',user="postgres", password='40284433',
+#      cursor_factory=RealDictCursor)
+#      cursor = conn.cursor()
+#      print("Database connected successfully")
+# except Exception as error:
+#     print("Connection to database failed") 
+#     print("Error:",error) 
+#     time.sleep(2)   
 
 
 

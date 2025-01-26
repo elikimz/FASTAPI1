@@ -26,8 +26,7 @@
 # print(setting.database_username)
 
 
-
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings  # Changed from pydantic to pydantic_settings
 from dotenv import load_dotenv
 
 # Load environment variables from the .env file
@@ -43,4 +42,3 @@ class Setting(BaseSettings):
         env_file = ".env"  # this tells pydantic to look for the .env file
 
 setting = Setting()  # Instantiate the settings
-

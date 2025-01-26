@@ -56,8 +56,22 @@ app.include_router(vote.router)
 #     time.sleep(2)   
 
 
-
-   
+# Database connection for testing
+try:
+    # Use the connection string from Render
+    conn = psycopg2.connect(
+        host='dpg-cuaugobqf0us73cbeu20-a',  # Correct Render-hosted PostgreSQL database hostname
+        database='database_fastapi',  # The database name you created
+        user='database_fastapi_user',  # The database user you created
+        password='2RU6nNNBZxa2lP8jiuhYMCOihUOklF8U',  # The password you created
+        cursor_factory=RealDictCursor
+    )
+    cursor = conn.cursor()
+    print("Database connected successfully")
+except Exception as error:
+    print("Connection to database failed")
+    print("Error:", error)
+    time.sleep(2)
 
          
 

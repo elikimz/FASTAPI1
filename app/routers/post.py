@@ -8,7 +8,7 @@ router = APIRouter(tags=["POSTS"])
 
 @router.get("/", tags=["DEFAULT"])
 def root():
-    return {"message": "Welcome to my FASTAPI"}
+    return {"message": "Welcome to my FASTAPI ?"}
 
 @router.get("/posts")
 def get_posts(

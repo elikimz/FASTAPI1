@@ -47,7 +47,7 @@ def get_post_by_id(
     
     # post[0] is the Post object, and post[1] is the vote count
     post_data = post[0].__dict__  # Convert Post model to a dictionary
-    post_data["votes"] = post[1]  # Add the vote count to the diction
+    post_data["votes"] = post[1]  # Add the vote count to the dictionary
 
     return post_data
 

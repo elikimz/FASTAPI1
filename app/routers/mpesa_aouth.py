@@ -57,4 +57,5 @@ def stk_push_request(phone_number, amount):
             raise Exception(f"Failed to initiate STK Push, Status Code: {response.status_code}, Response: {response.text}")
 
     except Exception as e:
+        print(f"Error initiating payment: {str(e)}")  # Detailed error log
         raise Exception(f"Error initiating payment: {str(e)}")

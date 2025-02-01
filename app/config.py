@@ -13,6 +13,12 @@ class Setting(BaseSettings):
  algorithm: str 
  access_token_expire_minutes: int 
      
+MPESA_CONSUMER_KEY :str
+MPESA_CONSUMER_SECRET :str
+MPESA_SHORTCODE :str
+MPESA_PASSKEY :str
+CALLBACK_URL :str
+
 
     
 class Config:

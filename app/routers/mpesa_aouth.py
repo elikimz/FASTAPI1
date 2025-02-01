@@ -1,7 +1,7 @@
 import requests
 import base64
 import datetime
-from config import MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_SHORTCODE, MPESA_PASSKEY, CALLBACK_URL
+from ..config import MPESA_CONSUMER_KEY,MPESA_CONSUMER_SECRET,MPESA_PASSKEY,MPESA_SHORTCODE,CALLBACK_URL
 
 # Function to get M-Pesa access token
 def get_mpesa_token():
@@ -29,7 +29,7 @@ def stk_push_request(phone_number, amount):
         "PartyA": phone_number,
         "PartyB": MPESA_SHORTCODE,
         "PhoneNumber": phone_number,
-        "CallBackURL": CALLBACK_URL,
+        "CallBackURL": CALLBACK_URL ,
         "AccountReference": "Test",
         "TransactionDesc": "Payment"
     }

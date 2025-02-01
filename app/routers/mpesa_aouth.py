@@ -22,7 +22,7 @@ def stk_push_request(phone_number, amount):
     try:
         access_token = get_mpesa_token()
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         password = base64.b64encode(f"{setting.MPESA_SHORTCODE}{setting.MPESA_PASSKEY}{timestamp}".encode()).decode()
 
         payload = {

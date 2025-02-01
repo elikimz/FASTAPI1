@@ -54,40 +54,31 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 import json  # Make sure this is imported at the top
 from fastapi import Request
 
+from fastapi import Request
+
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    raw_data = await request.body()
+    raw_text = raw_data.decode("utf-8")
+    
+    print("🔥 Raw Callback String:", raw_text)  # Log raw incoming request
+    
+    if not raw_text:
+        logger.error("🚨 Received empty callback request!")
+        return {"error": "Empty callback request"}
+
     try:
-        # Get raw callback data and decode
-        raw_body = await request.body()
-        raw_json = raw_body.decode('utf-8')  # Convert bytes to string
-        
-        # Log raw data for debugging
-        logger.info(f"🔥 Raw Callback String: {raw_json}")
-        print(f"🔥 Raw Callback String: {raw_json}")
-
-        # Clean non-printable characters (common in M-Pesa callbacks)
-        cleaned_json = ''.join(c for c in raw_json if c.isprintable())
-        
-        # Parse JSON manually
-        data = json.loads(cleaned_json)
-        
-        # Extract transaction ID - M-Pesa's actual structure
-        callback = data.get("Body", {}).get("stkCallback", {})
-        transaction_id = callback.get("CheckoutRequestID")
-
-        # Alternative extraction if above fails
-        if not transaction_id:
-            transaction_id = data.get("CheckoutRequestID")
-
-        if not transaction_id:
-            logger.error("🚨 Missing transaction ID in:\n%s", data)
-            return {"ResultCode": 1, "ResultDesc": "Missing transaction ID"}
-
-        # Rest of your logic to update database...
-
-    except json.JSONDecodeError as e:
-        logger.error(f"🚨 JSON Decode Error: {str(e)}\nRaw Data: {raw_json}")
-        return {"ResultCode": 1, "ResultDesc": "Invalid JSON format"}
+        data = request.json()
+        print("✅ Parsed JSON:", data)  # Log parsed JSON data
     except Exception as e:
-        logger.error(f"Callback failed: {str(e)}")
-        return {"ResultCode": 1, "ResultDesc": "Server error"}
+        logger.error(f"🚨 JSON Decode Error: {str(e)}")
+        return {"error": "Invalid JSON format"}
+
+    callback = data.get("Body", {}).get("stkCallback", {})
+    transaction_id = callback.get("CheckoutRequestID")
+
+    if not transaction_id:
+        logger.error("🚨 Missing transaction ID in:", data)
+        return {"error": "Transaction ID not found in callback data"}
+
+    return {"message": "Callback received"}

@@ -13,12 +13,16 @@ logger.setLevel(logging.DEBUG)
 
 # Helper function to normalize phone number
 def normalize_phone_number(phone_number: str):
-    if phone_number.startswith("0"):
-        phone_number = "+254" + phone_number[1:]  # Convert 07x to +2547xx
-    elif not phone_number.startswith("+254"):
-        raise ValueError("Invalid phone number format, should start with +254")
-    return phone_number
-
+    # Remove all non-digit characters (e.g., +, spaces)
+    digits = "".join(filter(str.isdigit, phone_number))
+    
+    if digits.startswith("0") and len(digits) == 9:  # Handle 07XXXXXXXX
+        return "254" + digits[1:]
+    elif digits.startswith("254") and len(digits) == 12:  # Already valid
+        return digits
+    else:
+        raise ValueError("Invalid phone number. Use 07XXXXXXXX or 2547XXXXXXXX.")
+    
 # Endpoint to initiate payment
 @router.post("/pay")
 def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get_db)):

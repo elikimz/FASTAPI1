@@ -18,6 +18,7 @@ def get_mpesa_token():
 
 # Function to initiate an STK Push reques
 def stk_push_request(phone_number, amount):
+    amount = int(amount)  # Convert to integer
     try:
         access_token = get_mpesa_token()
 
@@ -30,8 +31,9 @@ def stk_push_request(phone_number, amount):
             "Timestamp": timestamp,
             "TransactionType": "CustomerPayBillOnline",
             "Amount": amount,
-            "PartyA": phone_number,  # Phone number sent as PartyA
+            "PartyA": phone_number,  # Must be 2547XXXXXXXX (no +)
             "PartyB": setting.MPESA_SHORTCODE,
+            "PhoneNumber": phone_number,
             "CallBackURL": setting.CALLBACK_URL,
             "AccountReference": "Test",
             "TransactionDesc": "Payment"

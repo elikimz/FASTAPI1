@@ -1,9 +1,10 @@
 import logging
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends,Request 
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import MpesaTransaction
 from .mpesa_aouth import stk_push_request  # Correct import for stk_push_request
+import json 
 
 router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
 
@@ -51,16 +52,50 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 # Endpoint to handle M-Pesa callbacks
 @router.post("/callback")
-def mpesa_callback(data: dict, db: Session = Depends(get_db)):
-    print("🔥 Full Callback Data:", data)  # Debugging output
-    logger.info(f"🔥 Full Callback Data: {data}")  
-
-    callback = data.get("Body", {}).get("stkCallback", {})
-    print("✅ Extracted Callback:", callback)  # Debugging output
-
-    transaction_id = callback.get("CheckoutRequestID")
-    print("🔍 Extracted Transaction ID:", transaction_id)  # Debugging output
-    
-    if not transaction_id:
-        logger.error("🚨 Callback missing transaction ID")
-        return {"error": "Transaction ID not found in callback data"}
+async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    try:
+        # Get raw request body
+        raw_body = await request.body()
+        data = json.loads(raw_body)
+        
+        logger.info(f"🔥 Raw Callback Data: {raw_body.decode()}")
+        
+        # Extract transaction ID from multiple possible locations
+        transaction_id = (
+            data.get("Body", {}).get("stkCallback", {}).get("CheckoutRequestID") or
+            data.get("CheckoutRequestID")  # Sometimes at root
+        )
+        
+        if not transaction_id:
+            logger.error("🚨 Missing transaction ID in callback")
+            return {"ResultCode": 1, "ResultDesc": "Missing transaction ID"}
+            
+        # Find transaction in database
+        transaction = db.query(MpesaTransaction).filter_by(
+            transaction_id=transaction_id
+        ).first()
+        
+        if not transaction:
+            logger.error(f"Transaction {transaction_id} not found")
+            return {"ResultCode": 1, "ResultDesc": "Transaction not found"}
+            
+        # Update status based on result code
+        result_code = data.get("Body", {}).get("stkCallback", {}).get("ResultCode", 1)
+        
+        if result_code == 0:
+            transaction.status = "completed"
+        else:
+            transaction.status = "failed"
+            logger.warning(f"Payment failed: {data.get('Body', {}).get('stkCallback', {}).get('ResultDesc')}")
+        
+        db.commit()
+        logger.info(f"Updated transaction {transaction_id} to {transaction.status}")
+        
+        return {"ResultCode": 0, "ResultDesc": "Success"}
+        
+    except json.JSONDecodeError:
+        logger.error("🚨 Invalid JSON in callback")
+        return {"ResultCode": 1, "ResultDesc": "Invalid JSON format"}
+    except Exception as e:
+        logger.error(f"Callback processing failed: {str(e)}")
+        return {"ResultCode": 1, "ResultDesc": "Server error"}

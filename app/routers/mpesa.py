@@ -52,27 +52,15 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 # Endpoint to handle M-Pesa callbacks
 @router.post("/callback")
 def mpesa_callback(data: dict, db: Session = Depends(get_db)):
-    logger.info(f"Received callback data: {data}")  # Log the callback data for inspection
+    print("🔥 Full Callback Data:", data)  # Debugging output
+    logger.info(f"🔥 Full Callback Data: {data}")  
 
     callback = data.get("Body", {}).get("stkCallback", {})
+    print("✅ Extracted Callback:", callback)  # Debugging output
+
     transaction_id = callback.get("CheckoutRequestID")
+    print("🔍 Extracted Transaction ID:", transaction_id)  # Debugging output
     
     if not transaction_id:
-        logger.error("Callback missing transaction ID")
+        logger.error("🚨 Callback missing transaction ID")
         return {"error": "Transaction ID not found in callback data"}
-
-    transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
-    
-    if not transaction:
-        return {"error": "Transaction not found"}
-
-    result_code = callback.get("ResultCode")
-    if result_code == 0:
-        transaction.status = "successful"
-    else:
-        error_message = callback.get("ResultDesc", "No description provided")
-        logger.error(f"Transaction failed: {error_message}")
-        transaction.status = "failed"
-
-    db.commit()
-    return {"message": "Callback received"}

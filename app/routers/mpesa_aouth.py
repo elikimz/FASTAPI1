@@ -1,6 +1,6 @@
 import requests
 import base64
-import datetime
+from datetime import datetime
 from ..config import setting  # Assuming your settings (MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, etc.) are in a config file
 
 # Function to get M-Pesa access token

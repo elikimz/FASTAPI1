@@ -1,5 +1,6 @@
+import datetime
 from .database import Base
-from sqlalchemy import TIMESTAMP, Boolean, Column, Float, Integer, String, text,ForeignKey
+from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Float, Integer, String, text,ForeignKey
 from sqlalchemy.orm import relationship
 
 class Post(Base):
@@ -35,3 +36,16 @@ class Vote(Base):
     __tablename__ ="votes"
     user_id=Column(Integer,ForeignKey("users.id",ondelete="CASCADE"),primary_key=True)
     post_id=Column(Integer,ForeignKey("posts.id",ondelete="CASCADE"),primary_key=True)
+
+
+
+
+class MpesaTransaction(Base):
+    __tablename__ = "mpesa_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    phone_number = Column(String, nullable=False)
+    amount = Column(Integer, nullable=False)
+    transaction_id = Column(String, unique=True, nullable=True)  # Will be set after payment
+    status = Column(String, default="Pending")  # "Pending", "Success", "Failed"
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)    

@@ -11,7 +11,7 @@ def get_mpesa_token():
     if response.status_code == 200:
         return response.json().get("access_token")
     else:
-        raise Exception("Failed to authenticate with M-Pesa")
+        raise Exception(f"Failed to authenticate with M-Pesa, Status Code: {response.status_code}, Response: {response.text}")
 
 # Function to initiate an STK Push request
 def stk_push_request(phone_number, amount):
@@ -41,4 +41,12 @@ def stk_push_request(phone_number, amount):
 
     response = requests.post("https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
 
-    return response.json()
+    # Log the request and response for debugging
+    print("M-Pesa Request Payload:", payload)
+    print("M-Pesa Response Status Code:", response.status_code)
+    print("M-Pesa Response Body:", response.json())
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Failed to initiate STK Push, Status Code: {response.status_code}, Response: {response.text}")

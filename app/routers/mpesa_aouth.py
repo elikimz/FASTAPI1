@@ -1,7 +1,7 @@
 import requests
 import base64
 import datetime
-from ..config import setting
+from ..config import setting  # Assuming your settings (MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, etc.) are in a config file
 
 # Function to get M-Pesa access token
 def get_mpesa_token():
@@ -24,7 +24,6 @@ def stk_push_request(phone_number, amount):
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         password = base64.b64encode(f"{setting.MPESA_SHORTCODE}{setting.MPESA_PASSKEY}{timestamp}".encode()).decode()
 
-        # Removed the PhoneNumber field, using only PartyA
         payload = {
             "BusinessShortCode": setting.MPESA_SHORTCODE,
             "Password": password,

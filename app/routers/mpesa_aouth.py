@@ -16,7 +16,7 @@ def get_mpesa_token():
     except requests.exceptions.RequestException as e:
         raise Exception(f"Network error occurred while fetching token: {str(e)}")
 
-# Function to initiate an STK Push request
+# Function to initiate an STK Push reques
 def stk_push_request(phone_number, amount):
     try:
         access_token = get_mpesa_token()

@@ -24,15 +24,15 @@ def stk_push_request(phone_number, amount):
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         password = base64.b64encode(f"{setting.MPESA_SHORTCODE}{setting.MPESA_PASSKEY}{timestamp}".encode()).decode()
 
+        # Removed the PhoneNumber field, using only PartyA
         payload = {
             "BusinessShortCode": setting.MPESA_SHORTCODE,
             "Password": password,
             "Timestamp": timestamp,
             "TransactionType": "CustomerPayBillOnline",
             "Amount": amount,
-            "PartyA": phone_number,
+            "PartyA": phone_number,  # Phone number sent as PartyA
             "PartyB": setting.MPESA_SHORTCODE,
-            "PhoneNumber": phone_number,
             "CallBackURL": setting.CALLBACK_URL,
             "AccountReference": "Test",
             "TransactionDesc": "Payment"
@@ -43,6 +43,7 @@ def stk_push_request(phone_number, amount):
             "Content-Type": "application/json"
         }
 
+        # Send the request to M-Pesa
         response = requests.post("https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
 
         # Log the request and response for debugging

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional,Union
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, validator,Field, constr
 from pydantic.types import conint
 
 
@@ -99,3 +99,5 @@ class Vote(BaseModel):
         if value not in (0, 1):
             raise ValueError("dir must be 0 or 1")
         return value
+    
+   

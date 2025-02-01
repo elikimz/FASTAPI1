@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from ..database import get_db
-from .. import MpesaTransaction
+from ..models import MpesaTransaction
 
 router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
 

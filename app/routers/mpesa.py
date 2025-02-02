@@ -5,6 +5,7 @@ from ..database import get_db
 from ..models import MpesaTransaction
 from .mpesa_aouth import stk_push_request  # Correct import for stk_push_request
 import json 
+import xmltodict
 
 router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
 
@@ -54,35 +55,49 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    raw_data = await request.body()  # Read raw request body
-    logger.info(f"🔥 Raw Callback String: {raw_data.decode()}")  # Log the exact body
-
     try:
-        data = await request.json()  # Parse JSON
-        logger.info(f"📩 Parsed Callback Data: {data}")  # Log parsed JSON
+        # Get raw XML data
+        raw_xml = await request.body()
+        logger.info(f"🔥 Raw Callback XML: {raw_xml.decode()}")
 
-        callback = data.get("Body", {}).get("stkCallback", {})
-        transaction_id = callback.get("CheckoutRequestID")
+        # Parse XML to dictionary
+        import xmltodict  # Add this at top of file
+        data = xmltodict.parse(raw_xml)
+        logger.info(f"📩 Parsed Callback Data: {data}")
 
-        if not transaction_id:
-            logger.error("🚨 Callback missing transaction ID")
-            return {"error": "Transaction ID not found in callback data"}
+        # Extract STK callback information
+        callback = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('ns0:STKCallback')
+        
+        if not callback:
+            logger.error("🚨 Invalid callback structure")
+            return {"error": "Invalid callback structure"}
 
+        # Extract transaction details
+        transaction_id = callback.get('CheckoutRequestID')
+        result_code = int(callback.get('ResultCode'))
+        result_desc = callback.get('ResultDesc')
+
+        # Find transaction in database
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
-
         if not transaction:
+            logger.error(f"🚨 Transaction not found: {transaction_id}")
             return {"error": "Transaction not found"}
 
-        result_code = callback.get("ResultCode")
+        # Update transaction status
         if result_code == 0:
             transaction.status = "successful"
+            # Extract MPESA receipt details if available
+            if 'CallbackMetadata' in callback:
+                items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
+                transaction.mpesa_code = items.get('MpesaReceiptNumber')
+                transaction.phone_number = items.get('PhoneNumber')
         else:
-            error_message = callback.get("ResultDesc", "No description provided")
-            logger.error(f"🚨 Transaction failed: {error_message}")
             transaction.status = "failed"
+            logger.error(f"🚨 Transaction failed: {result_desc}")
 
         db.commit()
-        return {"message": "Callback processed"}
+        return {"ResultCode": 0, "ResultDesc": "Success"}  # Important: M-Pesa expects this response
+
     except Exception as e:
-        logger.error(f"🚨 Error processing callback: {str(e)}")
-        return {"error": "Invalid callback format"}
+        logger.error(f"🚨 Error processing callback: {str(e)}", exc_info=True)
+        return {"ResultCode": 1, "ResultDesc": "Failed"}

@@ -64,69 +64,22 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
 
     try:
         raw_xml = await request.body()
+        raw_text = raw_xml.decode(errors="ignore")  # Decode safely
+        logger.debug(f"📨 Raw Request Body: {raw_text}")  # Log the exact content received
 
-        # Log raw XML content for debugging
-        logger.debug(f"📨 Raw XML (bytes): {raw_xml}")
-        logger.debug(f"📨 Raw XML (decoded): {raw_xml.decode()}")
-
-        # Check if XML is empty
-        if not raw_xml.strip():
-            logger.warning("⚠️ Empty healthcheck or invalid XML received")
+        if not raw_text.strip():
+            logger.warning("⚠️ Empty request received")
             return success_response
 
         # Try parsing the XML
         try:
-            data = xmltodict.parse(raw_xml)
+            data = xmltodict.parse(raw_text)
             logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
-        except xml.parsers.expat.ExpatError as e:
+        except Exception as e:
             logger.error(f"🔥 XML Parsing Error: {str(e)}")
             return success_response
 
-        # Extract STKCallback (handle XML namespaces)
-        envelope = data.get("soapenv:Envelope", data.get("Envelope", {}))
-        body = envelope.get("soapenv:Body", envelope.get("Body", {}))
-        callback = body.get("stk:STKCallback", body.get("STKCallback", {}))
-
-        logger.debug(f"🔍 Extracted Callback: {json.dumps(callback, indent=2)}")
-
-        transaction_id = callback.get("CheckoutRequestID")
-        result_code_str = callback.get("ResultCode")
-        result_code = int(result_code_str) if result_code_str else -1
-
-        logger.info(f"🔧 Processing: TransactionID={transaction_id}, ResultCode={result_code}")
-
-        # Find transaction
-        transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
-        if not transaction:
-            logger.error(f"❌ Transaction {transaction_id} not found!")
-            return success_response
-
-        logger.debug(f"💾 Current Status: {transaction.status}")
-
-        # Update status
-        new_status = "successful" if result_code == 0 else "failed"
-        transaction.status = new_status
-        logger.debug(f"🔄 New Status: {new_status}")
-
-        # Handle metadata (for successful transactions)
-        if result_code == 0:
-            try:
-                metadata = callback.get("CallbackMetadata", {}).get("Item", [])
-                items = {item["Name"]: item["Value"] for item in metadata}
-                transaction.mpesa_code = items.get("MpesaReceiptNumber")
-                transaction.phone_number = items.get("PhoneNumber")
-                logger.debug(f"📦 Metadata: {items}")
-            except KeyError as e:
-                logger.error(f"❗ Metadata Error: {e}")
-
-        # Commit changes
-        db.commit()
-        db.refresh(transaction)  # Refresh to confirm update
-        logger.info(f"✅ Updated Transaction: {transaction_id} -> {new_status}")
-        logger.debug(f"💾 Post-Commit Status: {transaction.status}")
-
     except Exception as e:
         logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
-        db.rollback()  # Rollback on error
 
     return success_response

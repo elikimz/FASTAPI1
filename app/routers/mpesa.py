@@ -57,27 +57,33 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 # Set up logging
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    success_response = Response(
-        content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
-        media_type="application/xml"
-    )
+    success_response = {"ResultCode": 0, "ResultDesc": "Success"}
 
     try:
-        raw_xml = await request.body()
-        raw_text = raw_xml.decode(errors="ignore")  # Decode safely
-        logger.debug(f"📨 Raw Request Body: {raw_text}")  # Log the exact content received
+        # Log raw body
+        raw_body = await request.body()
+        raw_text = raw_body.decode(errors="ignore").strip()
+        logger.debug(f"📨 Raw Request Body: {raw_text}")
 
-        if not raw_text.strip():
+        if not raw_text:
             logger.warning("⚠️ Empty request received")
-            return success_response
+            return success_response  # Return success to avoid retries
 
-        # Try parsing the XML
+        # Try parsing JSON
+        try:
+            json_body = await request.json()
+            logger.debug(f"📜 Parsed JSON Data: {json.dumps(json_body, indent=2)}")
+            return success_response  # Stop here for now to analyze logs
+        except Exception:
+            logger.debug("📌 Not JSON, attempting XML parsing...")
+
+        # Try parsing XML
         try:
             data = xmltodict.parse(raw_text)
             logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
         except Exception as e:
             logger.error(f"🔥 XML Parsing Error: {str(e)}")
-            return success_response
+            return success_response  # Return success to prevent retry loops
 
     except Exception as e:
         logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)

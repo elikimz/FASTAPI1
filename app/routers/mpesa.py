@@ -54,102 +54,49 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 
-# # Set up logging
-# @router.post("/callback")
-# async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-#     success_response = {"ResultCode": 0, "ResultDesc": "Success"}
-
-#     try:
-#         # Log request method and headers
-#         logger.debug(f"🔍 Request Method: {request.method}")
-#         logger.debug(f"📨 Request Headers: {dict(request.headers)}")
-
-#         # Read and log raw body
-#         raw_body = await request.body()
-#         raw_text = raw_body.decode(errors="ignore").strip()
-#         logger.debug(f"📨 Raw Request Body: {raw_text}")
-
-#         # If body is empty, log it and return success to avoid retry loops
-#         if not raw_text:
-#             logger.warning("⚠️ Empty request received from M-Pesa")
-#             return success_response
-
-#         # Try parsing JSON first
-#         try:
-#             json_body = await request.json()
-#             logger.debug(f"📜 Parsed JSON Data: {json.dumps(json_body, indent=2)}")
-#             return success_response  # Stop here to analyze logs
-#         except Exception as e:
-#             logger.debug("📌 Not JSON, attempting XML parsing...")
-#             logger.error(f"🔥 JSON Parsing Error: {str(e)}")  # Log JSON parsing error
-
-#         # Try parsing XML
-#         try:
-#             data = xmltodict.parse(raw_text)
-#             logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
-#         except xml.parsers.expat.ExpatError as e:
-#             logger.error(f"🔥 XML Parsing Error (Expat): {str(e)}")
-#             return success_response  # Return success to prevent retry loops
-#         except Exception as e:
-#             logger.error(f"🔥 General XML Parsing Error: {str(e)}")
-#             return success_response  # Return success to prevent retry loops
-
-#     except Exception as e:
-#         logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
-
-#     return success_response
-
-
+# Set up logging
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     success_response = {"ResultCode": 0, "ResultDesc": "Success"}
-    error_response = {"ResultCode": 1, "ResultDesc": "Failed"}
 
     try:
-        # Read raw request body
+        # Log request method and headers
+        logger.debug(f"🔍 Request Method: {request.method}")
+        logger.debug(f"📨 Request Headers: {dict(request.headers)}")
+
+        # Read and log raw body
         raw_body = await request.body()
         raw_text = raw_body.decode(errors="ignore").strip()
-        
+        logger.debug(f"📨 Raw Request Body: {raw_text}")
+
+        # If body is empty, log it and return success to avoid retry loops
         if not raw_text:
             logger.warning("⚠️ Empty request received from M-Pesa")
             return success_response
 
-        # Parse XML data
-        data = xmltodict.parse(raw_text)
-        logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
+        # Try parsing JSON first
+        try:
+            json_body = await request.json()
+            logger.debug(f"📜 Parsed JSON Data: {json.dumps(json_body, indent=2)}")
+            return success_response  # Stop here to analyze logs
+        except Exception as e:
+            logger.debug("📌 Not JSON, attempting XML parsing...")
+            logger.error(f"🔥 JSON Parsing Error: {str(e)}")  # Log JSON parsing error
 
-        # Extract relevant information from the XML structure
-        callback_data = data.get('SOAP-ENV:Envelope', {}).get('SOAP-ENV:Body', {}).get('ns0:CBPayBillResult', {})
-        result_code = int(callback_data.get('ResultCode'))
-        result_desc = callback_data.get('ResultDesc')
-        checkout_request_id = callback_data.get('CheckoutRequestID')
-        mpesa_receipt_number = callback_data.get('MpesaReceiptNumber')
-
-        logger.info(f"📩 Callback received - ResultCode: {result_code}, CheckoutRequestID: {checkout_request_id}")
-
-        # Find transaction in database
-        transaction = db.query(MpesaTransaction).filter(
-            MpesaTransaction.transaction_id == checkout_request_id
-        ).first()
-
-        if not transaction:
-            logger.error(f"❌ Transaction not found: {checkout_request_id}")
-            return error_response
-
-        # Update transaction status based on result code
-        if result_code == 0:
-            transaction.status = "success"
-            transaction.mpesa_code = mpesa_receipt_number
-            logger.info(f"✅ Updated transaction {checkout_request_id} to success")
-        else:
-            transaction.status = "failed"
-            logger.warning(f"❌ Transaction {checkout_request_id} failed: {result_desc}")
-
-        db.commit()
+        # Try parsing XML
+        try:
+            data = xmltodict.parse(raw_text)
+            logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(f"🔥 XML Parsing Error (Expat): {str(e)}")
+            return success_response  # Return success to prevent retry loops
+        except Exception as e:
+            logger.error(f"🔥 General XML Parsing Error: {str(e)}")
+            return success_response  # Return success to prevent retry loops
 
     except Exception as e:
         logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
-        db.rollback()
-        return error_response
 
     return success_response
+
+

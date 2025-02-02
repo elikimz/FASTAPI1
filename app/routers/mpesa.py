@@ -79,15 +79,19 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
             json_body = await request.json()
             logger.debug(f"📜 Parsed JSON Data: {json.dumps(json_body, indent=2)}")
             return success_response  # Stop here to analyze logs
-        except Exception:
+        except Exception as e:
             logger.debug("📌 Not JSON, attempting XML parsing...")
+            logger.error(f"🔥 JSON Parsing Error: {str(e)}")  # Log JSON parsing error
 
         # Try parsing XML
         try:
             data = xmltodict.parse(raw_text)
             logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(f"🔥 XML Parsing Error (Expat): {str(e)}")
+            return success_response  # Return success to prevent retry loops
         except Exception as e:
-            logger.error(f"🔥 XML Parsing Error: {str(e)}")
+            logger.error(f"🔥 General XML Parsing Error: {str(e)}")
             return success_response  # Return success to prevent retry loops
 
     except Exception as e:

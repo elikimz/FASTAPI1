@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, HTTPException, Depends,Request 
+from fastapi import APIRouter, HTTPException, Depends,Request ,Response 
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import MpesaTransaction
@@ -56,48 +56,61 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        # Get raw XML data
         raw_xml = await request.body()
-        logger.info(f"🔥 Raw Callback XML: {raw_xml.decode()}")
+        logger.info(f"🔥 Raw Callback Content: {raw_xml.decode()}")
 
-        # Parse XML to dictionary
-       
-        data = xmltodict.parse(raw_xml)
-        logger.info(f"📩 Parsed Callback Data: {data}")
+        # Check for empty payload first
+        if not raw_xml.strip():
+            logger.warning("⚠️ Received empty callback payload")
+            return Response(
+                content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+                media_type="application/xml"
+            )
 
-        # Extract STK callback information
+        # Attempt XML parsing
+        try:
+            data = xmltodict.parse(raw_xml)
+        except Exception as parse_error:
+            logger.error(f"🚨 XML Parsing Error: {str(parse_error)}")
+            return Response(
+                content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+                media_type="application/xml"
+            )
+
+        # Process valid XML
         callback = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('ns0:STKCallback')
         
         if not callback:
             logger.error("🚨 Invalid callback structure")
-            return {"error": "Invalid callback structure"}
+            return Response(
+                content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+                media_type="application/xml"
+            )
 
-        # Extract transaction details
         transaction_id = callback.get('CheckoutRequestID')
         result_code = int(callback.get('ResultCode'))
         result_desc = callback.get('ResultDesc')
 
-        # Find transaction in database
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
-        if not transaction:
-            logger.error(f"🚨 Transaction not found: {transaction_id}")
-            return {"error": "Transaction not found"}
+        if transaction:
+            if result_code == 0:
+                transaction.status = "successful"
+                if 'CallbackMetadata' in callback:
+                    items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
+                    transaction.mpesa_code = items.get('MpesaReceiptNumber')
+            else:
+                transaction.status = "failed"
+            db.commit()
 
-        # Update transaction status
-        if result_code == 0:
-            transaction.status = "successful"
-            # Extract MPESA receipt details if available
-            if 'CallbackMetadata' in callback:
-                items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
-                transaction.mpesa_code = items.get('MpesaReceiptNumber')
-                transaction.phone_number = items.get('PhoneNumber')
-        else:
-            transaction.status = "failed"
-            logger.error(f"🚨 Transaction failed: {result_desc}")
-
-        db.commit()
-        return {"ResultCode": 0, "ResultDesc": "Success"}  # Important: M-Pesa expects this response
+        # Always return success response to M-Pesa
+        return Response(
+            content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+            media_type="application/xml"
+        )
 
     except Exception as e:
-        logger.error(f"🚨 Error processing callback: {str(e)}", exc_info=True)
-        return {"ResultCode": 1, "ResultDesc": "Failed"}
+        logger.error(f"🚨 Critical error: {str(e)}", exc_info=True)
+        return Response(
+            content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+            media_type="application/xml"
+        )

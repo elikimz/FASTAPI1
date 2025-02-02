@@ -61,7 +61,6 @@ logger.setLevel(logging.DEBUG)
 # Callback endpoint to handle M-Pesa callback
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    # Success response in XML format
     success_response = Response(
         content='<?xml version="1.0" encoding="UTF-8"?>'
                 '<Response>'
@@ -82,8 +81,8 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         # Log the raw XML content for debugging
         logger.debug(f"📨 Raw Callback Content:\n{raw_xml.decode()}")
 
-        # Parse XML response
         try:
+            # Parse XML response
             data = xmltodict.parse(raw_xml)
         except Exception as e:
             logger.error(f"🚨 XML Parsing Failed: {str(e)}")
@@ -105,13 +104,18 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
 
         # Find the transaction in the database
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
+
         if transaction:
             # Update transaction status based on the result code
             transaction.status = "successful" if result_code == 0 else "failed"
+
+            # Update transaction metadata if successful
             if result_code == 0 and 'CallbackMetadata' in callback:
                 items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
                 transaction.mpesa_code = items.get('MpesaReceiptNumber')
                 transaction.phone_number = items.get('PhoneNumber')
+
+            # Commit the changes to the database
             db.commit()
             logger.info(f"✅ Updated transaction {transaction_id} to {transaction.status}")
         else:

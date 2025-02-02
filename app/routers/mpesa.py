@@ -55,62 +55,59 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    # Define success response upfront
+    success_response = Response(
+        content='<?xml version="1.0" encoding="UTF-8"?>'
+                '<Response>'
+                '<ResultCode>0</ResultCode>'
+                '<ResultDesc>Success</ResultDesc>'
+                '</Response>',
+        media_type="application/xml"
+    )
+    
     try:
         raw_xml = await request.body()
-        logger.info(f"🔥 Raw Callback Content: {raw_xml.decode()}")
-
-        # Check for empty payload first
+        
+        # Handle empty payload immediately
         if not raw_xml.strip():
-            logger.warning("⚠️ Received empty callback payload")
-            return Response(
-                content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
-                media_type="application/xml"
-            )
+            logger.warning("⚠️ Received empty ping/healthcheck")
+            return success_response
 
-        # Attempt XML parsing
+        # Log raw content for debugging
+        logger.debug(f"📨 Raw Callback Content:\n{raw_xml.decode()}")
+        
+        # Parse XML
         try:
             data = xmltodict.parse(raw_xml)
-        except Exception as parse_error:
-            logger.error(f"🚨 XML Parsing Error: {str(parse_error)}")
-            return Response(
-                content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
-                media_type="application/xml"
-            )
+        except Exception as e:
+            logger.error(f"🚨 XML Parsing Failed: {str(e)}")
+            return success_response
 
-        # Process valid XML
+        # Process valid M-Pesa callback
         callback = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('ns0:STKCallback')
         
         if not callback:
-            logger.error("🚨 Invalid callback structure")
-            return Response(
-                content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
-                media_type="application/xml"
-            )
+            logger.error("❌ Invalid callback structure")
+            return success_response
 
         transaction_id = callback.get('CheckoutRequestID')
-        result_code = int(callback.get('ResultCode'))
-        result_desc = callback.get('ResultDesc')
-
+        result_code = int(callback.get('ResultCode', -1))
+        
+        # Database update logic
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
         if transaction:
-            if result_code == 0:
-                transaction.status = "successful"
-                if 'CallbackMetadata' in callback:
-                    items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
-                    transaction.mpesa_code = items.get('MpesaReceiptNumber')
-            else:
-                transaction.status = "failed"
+            transaction.status = "successful" if result_code == 0 else "failed"
+            if result_code == 0 and 'CallbackMetadata' in callback:
+                items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
+                transaction.mpesa_code = items.get('MpesaReceiptNumber')
+                transaction.phone_number = items.get('PhoneNumber')
             db.commit()
+            logger.info(f"✅ Updated transaction {transaction_id} to {transaction.status}")
+        else:
+            logger.warning(f"⚠️ Transaction {transaction_id} not found")
 
-        # Always return success response to M-Pesa
-        return Response(
-            content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
-            media_type="application/xml"
-        )
+        return success_response
 
     except Exception as e:
-        logger.error(f"🚨 Critical error: {str(e)}", exc_info=True)
-        return Response(
-            content='<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
-            media_type="application/xml"
-        )
+        logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
+        return success_response

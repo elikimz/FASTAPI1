@@ -79,25 +79,51 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
             logger.error(f"🚨 XML Parsing Failed: {str(e)}")
             return success_response
 
-        # Logging data structure for debugging
         logger.debug(f"📜 Parsed Callback Data:\n{data}")
 
-        callback = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('ns0:STKCallback')
+        # Dynamically find STKCallback element regardless of namespace
+        envelope = data.get('soapenv:Envelope', {})
+        body = envelope.get('soapenv:Body', {})
+        callback_key = next((key for key in body if key.endswith('STKCallback')), None)
 
-        if not callback:
-            logger.error("❌ Invalid callback structure or missing STKCallback")
+        if not callback_key:
+            logger.error("❌ STKCallback not found in XML data")
             return success_response
 
-        transaction_id = callback.get('CheckoutRequestID')
-        result_code = int(callback.get('ResultCode', -1))
+        callback = body[callback_key]
+
+        # Extract CheckoutRequestID dynamically
+        checkout_request_id_key = next((k for k in callback if k.endswith('CheckoutRequestID')), None)
+        transaction_id = callback.get(checkout_request_id_key) if checkout_request_id_key else None
+
+        # Extract ResultCode dynamically
+        result_code_key = next((k for k in callback if k.endswith('ResultCode')), None)
+        result_code = int(callback.get(result_code_key, -1)) if result_code_key else -1
+
+        if not transaction_id:
+            logger.error("❌ CheckoutRequestID missing in callback")
+            return success_response
 
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
         if transaction:
             transaction.status = "successful" if result_code == 0 else "failed"
-            if result_code == 0 and 'CallbackMetadata' in callback:
-                items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
-                transaction.mpesa_code = items.get('MpesaReceiptNumber')
-                transaction.phone_number = items.get('PhoneNumber')
+            
+            if result_code == 0:
+                # Extract CallbackMetadata items
+                metadata_key = next((k for k in callback if k.endswith('CallbackMetadata')), None)
+                if metadata_key:
+                    items = callback[metadata_key].get('Item', [])
+                    item_dict = {}
+                    for item in items:
+                        name_key = next((k for k in item if k.endswith('Name')), None)
+                        value_key = next((k for k in item if k.endswith('Value')), None)
+                        if name_key and value_key:
+                            name = item[name_key]
+                            value = item[value_key]
+                            item_dict[name] = value
+                    transaction.mpesa_code = item_dict.get('MpesaReceiptNumber')
+                    transaction.phone_number = item_dict.get('PhoneNumber')
+            
             db.commit()
             logger.info(f"✅ Updated transaction {transaction_id} to {transaction.status}")
         else:

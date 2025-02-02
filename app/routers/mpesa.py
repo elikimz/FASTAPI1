@@ -25,46 +25,48 @@ def normalize_phone_number(phone_number: str):
         raise ValueError("Invalid phone number. Use 07XXXXXXXX or 2547XXXXXXXX.")
     
 # Endpoint to initiate payment
-@router.post("/pay")
-def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get_db)):
+@router.post("/callback")
+async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    raw_data = await request.body()
+    raw_text = raw_data.decode("utf-8").strip()
+
+    # Log the raw request for debugging
+    print(f"🔥 Raw Callback String: {raw_text}")
+
+    # If the request body is empty, return an error response
+    if not raw_text:
+        logger.error("🚨 Received empty callback request!")
+        return {"error": "Empty callback request"}
+
     try:
-        phone_number = normalize_phone_number(phone_number)  # Normalize the phone number
-        response = stk_push_request(phone_number, amount)
-        logger.info(f"M-Pesa Response: {response}")  # Log the full response
-
-        response_code = response.get("ResponseCode", "unknown")
-        if response_code == "0":
-            transaction = MpesaTransaction(
-                phone_number=phone_number,
-                amount=amount,
-                transaction_id=response["CheckoutRequestID"],
-                status="pending"
-            )
-            db.add(transaction)
-            db.commit()
-            return {"message": "Payment request sent", "transaction_id": response["CheckoutRequestID"]}
-        else:
-            error_message = response.get('errorMessage', 'Unknown error')
-            raise HTTPException(status_code=400, detail=f"Payment request failed: {error_message}")
+        data = await request.json()
+        print(f"✅ Parsed JSON: {data}")  # Log parsed JSON data
     except Exception as e:
-        logger.error(f"Error initiating payment: {str(e)}")  # Log the exception
-        raise HTTPException(status_code=500, detail="Internal server error while initiating payment")
+        logger.error(f"🚨 JSON Decode Error: {str(e)}")
+        return {"error": "Invalid JSON format"}
 
-# Endpoint to handle M-Pesa callbacks
-import json  # Make sure this is imported at the top
-from fastapi import Request
+    # Extract transaction ID from the callback
+    callback = data.get("Body", {}).get("stkCallback", {})
+    transaction_id = callback.get("CheckoutRequestID")
 
-from fastapi import Request
+    if not transaction_id:
+        logger.error("🚨 Callback missing transaction ID")
+        return {"error": "Transaction ID not found in callback data"}
 
-# Add these imports at the top
-import json
-import logging
-from fastapi import Request
+    # Find the transaction in the database
+    transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
+    if not transaction:
+        logger.error(f"🚨 Transaction {transaction_id} not found in DB!")
+        return {"error": "Transaction not found"}
 
-@router.post("/mpesa/callback")
-async def mpesa_callback(request: Request):
-    """Handle M-Pesa callback response."""
-    body = await request.json()
-    print("M-Pesa Callback Response:", body)
-    
-    return {"message": "Callback received"}
+    # Update the transaction status
+    result_code = callback.get("ResultCode")
+    if result_code == 0:
+        transaction.status = "successful"
+    else:
+        transaction.status = "failed"
+        error_message = callback.get("ResultDesc", "No description provided")
+        logger.error(f"🚨 Transaction failed: {error_message}")
+
+    db.commit()
+    return {"message": "Callback received and processed"}

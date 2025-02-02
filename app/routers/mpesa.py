@@ -60,20 +60,25 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     success_response = {"ResultCode": 0, "ResultDesc": "Success"}
 
     try:
-        # Log raw body
+        # Log request method and headers
+        logger.debug(f"🔍 Request Method: {request.method}")
+        logger.debug(f"📨 Request Headers: {dict(request.headers)}")
+
+        # Read and log raw body
         raw_body = await request.body()
         raw_text = raw_body.decode(errors="ignore").strip()
         logger.debug(f"📨 Raw Request Body: {raw_text}")
 
+        # If body is empty, log it and return success to avoid retry loops
         if not raw_text:
-            logger.warning("⚠️ Empty request received")
-            return success_response  # Return success to avoid retries
+            logger.warning("⚠️ Empty request received from M-Pesa")
+            return success_response
 
-        # Try parsing JSON
+        # Try parsing JSON first
         try:
             json_body = await request.json()
             logger.debug(f"📜 Parsed JSON Data: {json.dumps(json_body, indent=2)}")
-            return success_response  # Stop here for now to analyze logs
+            return success_response  # Stop here to analyze logs
         except Exception:
             logger.debug("📌 Not JSON, attempting XML parsing...")
 

@@ -54,6 +54,7 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 # Set up logging
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -81,8 +82,8 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         # Log the raw XML content for debugging
         logger.debug(f"📨 Raw Callback Content:\n{raw_xml.decode()}")
 
+        # Parse XML response
         try:
-            # Parse XML response
             data = xmltodict.parse(raw_xml)
         except Exception as e:
             logger.error(f"🚨 XML Parsing Failed: {str(e)}")

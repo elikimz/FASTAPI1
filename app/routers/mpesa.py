@@ -63,16 +63,23 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
 
     try:
         raw_xml = await request.body()
+
+        # Log raw XML content for debugging
         logger.debug(f"📨 Raw XML (bytes): {raw_xml}")
         logger.debug(f"📨 Raw XML (decoded): {raw_xml.decode()}")
 
+        # Check if XML is empty
         if not raw_xml.strip():
-            logger.warning("⚠️ Empty healthcheck received")
+            logger.warning("⚠️ Empty healthcheck or invalid XML received")
             return success_response
 
-        # Parse XML
-        data = xmltodict.parse(raw_xml)
-        logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
+        # Try parsing the XML
+        try:
+            data = xmltodict.parse(raw_xml)
+            logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
+        except xml.parsers.expat.ExpatError as e:
+            logger.error(f"🔥 XML Parsing Error: {str(e)}")
+            return success_response
 
         # Extract STKCallback (handle XML namespaces)
         envelope = data.get("soapenv:Envelope", data.get("Envelope", {}))

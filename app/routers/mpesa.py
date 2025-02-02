@@ -61,63 +61,10 @@ import json
 import logging
 from fastapi import Request
 
-@router.post("/callback")
-async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    # Log incoming request metadata
-    client_ip = request.client.host if request.client else "unknown"
-    logger.info(f"🌐 Callback received from IP: {client_ip}")
+@router.post("/mpesa/callback")
+async def mpesa_callback(request: Request):
+    """Handle M-Pesa callback response."""
+    body = await request.json()
+    print("M-Pesa Callback Response:", body)
     
-    try:
-        # Get raw request body
-        raw_body = await request.body()
-        
-        # Handle empty callback (common issue)
-        if not raw_body:
-            logger.error("💥 EMPTY CALLBACK BODY RECEIVED")
-            return {"ResultCode": 1, "ResultDesc": "Empty callback"}
-        
-        # Decode and clean the data
-        decoded_body = raw_body.decode('utf-8').strip()
-        logger.info(f"📝 Raw Callback Content:\n{decoded_body}")
-        
-        # Clean non-printable characters
-        cleaned_body = "".join(c for c in decoded_body if c.isprintable())
-        
-        # Parse JSON
-        data = json.loads(cleaned_body)
-        
-        # Extract transaction ID from M-Pesa's structure
-        callback = data.get("Body", {}).get("stkCallback", {})
-        transaction_id = callback.get("CheckoutRequestID")
-        
-        # Fallback extraction if structure differs
-        if not transaction_id:
-            transaction_id = data.get("CheckoutRequestID")
-        
-        if not transaction_id:
-            logger.error("🚨 Missing CheckoutRequestID in:\n%s", data)
-            return {"ResultCode": 1, "ResultDesc": "Transaction ID missing"}
-        
-        # Update transaction status
-        transaction = db.query(MpesaTransaction).filter_by(
-            transaction_id=transaction_id
-        ).first()
-        
-        if not transaction:
-            logger.error(f"❌ Transaction {transaction_id} not found")
-            return {"ResultCode": 1, "ResultDesc": "Transaction not found"}
-        
-        # Determine success/failure
-        result_code = callback.get("ResultCode", 1)
-        transaction.status = "completed" if result_code == 0 else "failed"
-        db.commit()
-        
-        logger.info(f"✅ Updated transaction {transaction_id} to {transaction.status}")
-        return {"ResultCode": 0, "ResultDesc": "Success"}
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"🚨 JSON Error: {str(e)}\nRaw Data:\n{decoded_body}")
-        return {"ResultCode": 1, "ResultDesc": "Invalid JSON"}
-    except Exception as e:
-        logger.error(f"🔥 Unexpected error: {str(e)}")
-        return {"ResultCode": 1, "ResultDesc": "Processing failed"}
+    return {"message": "Callback received"}

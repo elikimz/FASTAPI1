@@ -5,7 +5,7 @@ from ..database import get_db
 from ..models import MpesaTransaction
 from .mpesa_aouth import stk_push_request  # Correct import for stk_push_request
 import json 
-import xmltodict
+import xmltodict  # Add this at top of file
 
 router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
 
@@ -61,7 +61,7 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         logger.info(f"🔥 Raw Callback XML: {raw_xml.decode()}")
 
         # Parse XML to dictionary
-        import xmltodict  # Add this at top of file
+       
         data = xmltodict.parse(raw_xml)
         logger.info(f"📩 Parsed Callback Data: {data}")
 

@@ -54,7 +54,6 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 # Set up logging
-
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     success_response = Response(
@@ -64,56 +63,62 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
 
     try:
         raw_xml = await request.body()
+        logger.debug(f"📨 Raw XML (bytes): {raw_xml}")  # Log raw bytes
+        logger.debug(f"📨 Raw XML (decoded): {raw_xml.decode()}")  # Log decoded XML
+
         if not raw_xml.strip():
             logger.warning("⚠️ Empty healthcheck received")
             return success_response
 
-        # Log raw XML content for debugging
-        logger.debug(f"📨 Raw XML content: {raw_xml.decode()}")
-
-        # Parse the XML content
+        # Parse XML
         data = xmltodict.parse(raw_xml)
-        logger.debug(f"📜 Parsed XML:\n{json.dumps(data, indent=2)}")
+        logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
 
-        # Extract STKCallback data
-        callback = data.get("Envelope", {}).get("Body", {}).get("STKCallback")
-        if not callback:
-            logger.error("❌ STKCallback not found in XML")
-            return success_response
+        # Extract STKCallback (handle XML namespaces)
+        envelope = data.get("soapenv:Envelope", data.get("Envelope", {}))
+        body = envelope.get("soapenv:Body", envelope.get("Body", {}))
+        callback = body.get("stk:STKCallback", body.get("STKCallback", {}))
+
+        logger.debug(f"🔍 Extracted Callback: {json.dumps(callback, indent=2)}")
 
         transaction_id = callback.get("CheckoutRequestID")
-        result_code = int(callback.get("ResultCode", -1))
+        result_code_str = callback.get("ResultCode")
+        result_code = int(result_code_str) if result_code_str else -1
 
-        # Log the transaction ID being processed
-        logger.debug(f"🔍 Processing CheckoutRequestID: {transaction_id}")
+        logger.info(f"🔧 Processing: TransactionID={transaction_id}, ResultCode={result_code}")
 
-        # Check if the transaction exists in the DB
+        # Find transaction
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
+        if not transaction:
+            logger.error(f"❌ Transaction {transaction_id} not found!")
+            return success_response
 
-        if transaction:
-            new_status = "successful" if result_code == 0 else "failed"
-            logger.debug(f"🔄 Updating {transaction_id} from {transaction.status} to {new_status}")
-            transaction.status = new_status
+        logger.debug(f"💾 Current Status: {transaction.status}")
 
-            # Update metadata for successful transactions
-            if result_code == 0:
-                try:
-                    metadata = callback.get("CallbackMetadata", {}).get("Item", [])
-                    logger.debug(f"📦 Callback Metadata: {json.dumps(metadata, indent=2)}")
-                    items = {item["Name"]: item["Value"] for item in metadata}
-                    transaction.mpesa_code = items.get("MpesaReceiptNumber")
-                    transaction.phone_number = items.get("PhoneNumber")
-                except KeyError as e:
-                    logger.error(f"❗ Metadata error: {e}")
+        # Update status
+        new_status = "successful" if result_code == 0 else "failed"
+        transaction.status = new_status
+        logger.debug(f"🔄 New Status: {new_status}")
 
-            # Commit the changes to the DB
-            db.commit()
-            logger.info(f"✅ Updated {transaction_id} to {new_status}")
-        else:
-            logger.error(f"❌ Transaction {transaction_id} not found in DB")
+        # Handle metadata (for successful transactions)
+        if result_code == 0:
+            try:
+                metadata = callback.get("CallbackMetadata", {}).get("Item", [])
+                items = {item["Name"]: item["Value"] for item in metadata}
+                transaction.mpesa_code = items.get("MpesaReceiptNumber")
+                transaction.phone_number = items.get("PhoneNumber")
+                logger.debug(f"📦 Metadata: {items}")
+            except KeyError as e:
+                logger.error(f"❗ Metadata Error: {e}")
 
-        return success_response
+        # Commit changes
+        db.commit()
+        db.refresh(transaction)  # Refresh to confirm update
+        logger.info(f"✅ Updated Transaction: {transaction_id} -> {new_status}")
+        logger.debug(f"💾 Post-Commit Status: {transaction.status}")
 
     except Exception as e:
-        logger.error(f"🔥 Critical error: {str(e)}", exc_info=True)
-        return success_response
+        logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
+        db.rollback()  # Rollback on error
+
+    return success_response

@@ -79,16 +79,25 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         body = envelope.get("soapenv:Body", envelope.get("Body", {}))
         callback = body.get("stk:STKCallback", body.get("STKCallback", {}))
 
+        if not callback:
+            logger.error("❌ STKCallback not found in XML")
+            return success_response
+
         logger.debug(f"🔍 Extracted Callback: {json.dumps(callback, indent=2)}")
 
         transaction_id = callback.get("CheckoutRequestID")
         result_code_str = callback.get("ResultCode")
-        result_code = int(result_code_str) if result_code_str else -1
+        if not result_code_str:
+            logger.error("❌ ResultCode missing from callback")
+            return success_response
 
+        result_code = int(result_code_str)
         logger.info(f"🔧 Processing: TransactionID={transaction_id}, ResultCode={result_code}")
 
         # Find transaction
+        logger.debug(f"🔍 Querying for Transaction with ID: {transaction_id}")
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
+
         if not transaction:
             logger.error(f"❌ Transaction {transaction_id} not found!")
             return success_response
@@ -112,13 +121,16 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
                 logger.error(f"❗ Metadata Error: {e}")
 
         # Commit changes
+        logger.debug("💾 Committing changes to the database")
         db.commit()
+        logger.debug(f"✅ Commit successful for Transaction {transaction_id}")
         db.refresh(transaction)  # Refresh to confirm update
         logger.info(f"✅ Updated Transaction: {transaction_id} -> {new_status}")
         logger.debug(f"💾 Post-Commit Status: {transaction.status}")
 
     except Exception as e:
-        logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
+        logger.error(f"🔥 Critical Error: {str(e)} during processing callback for TransactionID {transaction_id}", exc_info=True)
         db.rollback()  # Rollback on error
+        logger.error("🔥 Rolling back due to error")
 
     return success_response

@@ -48,5 +48,5 @@ class MpesaTransaction(Base):
     amount = Column(Integer, nullable=False)
     transaction_id = Column(String, unique=True, nullable=True)  # Will be set after payment
     mpesa_code = Column(String, nullable=True)
-    status = Column(String, default="Pending")  # "Pending", "Success", "Failed"
+    status = Column(String, default="pending")  # "Pending", "Success", "Failed"
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)    

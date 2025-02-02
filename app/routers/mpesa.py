@@ -50,59 +50,37 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
         logger.error(f"Error initiating payment: {str(e)}")  # Log the exception
         raise HTTPException(status_code=500, detail="Internal server error while initiating payment")
 
-# Endpoint to handle M-Pesa callbacks
-import json  # Make sure this is imported at the top
-from fastapi import Request
 
-from fastapi import Request
-
-# Add these imports at the top
-import json
-import logging
-from fastapi import Request
 
 @router.post("/callback")
-async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    raw_data = await request.body()
-    raw_text = raw_data.decode("utf-8").strip()
-
-    # Log the raw request for debugging
-    print(f"🔥 Raw Callback String: {raw_text}")
-
-    # If the request body is empty, return an error response
-    if not raw_text:
+def mpesa_callback(data: dict = None, db: Session = Depends(get_db)):
+    if not data:  # Handle empty request
         logger.error("🚨 Received empty callback request!")
-        return {"error": "Empty callback request"}
+        return {"error": "Empty request received"}
+    
+    logger.info(f"🔥 Raw Callback Data: {data}")  # Log callback data
 
-    try:
-        data = await request.json()
-        print(f"✅ Parsed JSON: {data}")  # Log parsed JSON data
-    except Exception as e:
-        logger.error(f"🚨 JSON Decode Error: {str(e)}")
-        return {"error": "Invalid JSON format"}
-
-    # Extract transaction ID from the callback
     callback = data.get("Body", {}).get("stkCallback", {})
-    transaction_id = callback.get("CheckoutRequestID")
+    if not callback:
+        logger.error(f"🚨 Missing 'stkCallback' in: {data}")
+        return {"error": "Invalid callback format"}
 
+    transaction_id = callback.get("CheckoutRequestID")
     if not transaction_id:
         logger.error("🚨 Callback missing transaction ID")
         return {"error": "Transaction ID not found in callback data"}
 
-    # Find the transaction in the database
     transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
     if not transaction:
-        logger.error(f"🚨 Transaction {transaction_id} not found in DB!")
         return {"error": "Transaction not found"}
 
-    # Update the transaction status
     result_code = callback.get("ResultCode")
     if result_code == 0:
         transaction.status = "successful"
     else:
-        transaction.status = "failed"
         error_message = callback.get("ResultDesc", "No description provided")
-        logger.error(f"🚨 Transaction failed: {error_message}")
+        logger.error(f"Transaction failed: {error_message}")
+        transaction.status = "failed"
 
     db.commit()
-    return {"message": "Callback received and processed"}
+    return {"message": "Callback received"}

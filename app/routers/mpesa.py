@@ -55,7 +55,6 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    # Define success response upfront
     success_response = Response(
         content='<?xml version="1.0" encoding="UTF-8"?>'
                 '<Response>'
@@ -64,36 +63,34 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
                 '</Response>',
         media_type="application/xml"
     )
-    
+
     try:
         raw_xml = await request.body()
-        
-        # Handle empty payload immediately
+
         if not raw_xml.strip():
             logger.warning("⚠️ Received empty ping/healthcheck")
             return success_response
 
-        # Log raw content for debugging
         logger.debug(f"📨 Raw Callback Content:\n{raw_xml.decode()}")
-        
-        # Parse XML
+
         try:
             data = xmltodict.parse(raw_xml)
         except Exception as e:
             logger.error(f"🚨 XML Parsing Failed: {str(e)}")
             return success_response
 
-        # Process valid M-Pesa callback
+        # Logging data structure for debugging
+        logger.debug(f"📜 Parsed Callback Data:\n{data}")
+
         callback = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('ns0:STKCallback')
-        
+
         if not callback:
-            logger.error("❌ Invalid callback structure")
+            logger.error("❌ Invalid callback structure or missing STKCallback")
             return success_response
 
         transaction_id = callback.get('CheckoutRequestID')
         result_code = int(callback.get('ResultCode', -1))
-        
-        # Database update logic
+
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
         if transaction:
             transaction.status = "successful" if result_code == 0 else "failed"

@@ -55,10 +55,6 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 # Set up logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-
-# Callback endpoint to handle M-Pesa callback
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     success_response = Response(
@@ -72,8 +68,12 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
             logger.warning("⚠️ Empty healthcheck received")
             return success_response
 
+        # Log raw XML content for debugging
+        logger.debug(f"📨 Raw XML content: {raw_xml.decode()}")
+
+        # Parse the XML content
         data = xmltodict.parse(raw_xml)
-        logger.debug(f"📜 Parsed XML:\n{json.dumps(data, indent=2)}")  # Critical for debugging!
+        logger.debug(f"📜 Parsed XML:\n{json.dumps(data, indent=2)}")
 
         # Extract STKCallback data
         callback = data.get("Envelope", {}).get("Body", {}).get("STKCallback")
@@ -84,25 +84,29 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         transaction_id = callback.get("CheckoutRequestID")
         result_code = int(callback.get("ResultCode", -1))
 
-        # Debug transaction ID
+        # Log the transaction ID being processed
         logger.debug(f"🔍 Processing CheckoutRequestID: {transaction_id}")
 
+        # Check if the transaction exists in the DB
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
+
         if transaction:
             new_status = "successful" if result_code == 0 else "failed"
             logger.debug(f"🔄 Updating {transaction_id} from {transaction.status} to {new_status}")
             transaction.status = new_status
 
-            # Update metadata only for successful transactions
+            # Update metadata for successful transactions
             if result_code == 0:
                 try:
                     metadata = callback.get("CallbackMetadata", {}).get("Item", [])
+                    logger.debug(f"📦 Callback Metadata: {json.dumps(metadata, indent=2)}")
                     items = {item["Name"]: item["Value"] for item in metadata}
                     transaction.mpesa_code = items.get("MpesaReceiptNumber")
                     transaction.phone_number = items.get("PhoneNumber")
                 except KeyError as e:
                     logger.error(f"❗ Metadata error: {e}")
 
+            # Commit the changes to the DB
             db.commit()
             logger.info(f"✅ Updated {transaction_id} to {new_status}")
         else:

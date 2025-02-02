@@ -53,8 +53,14 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 
+# Set up logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Callback endpoint to handle M-Pesa callback
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    # Success response in XML format
     success_response = Response(
         content='<?xml version="1.0" encoding="UTF-8"?>'
                 '<Response>'
@@ -67,63 +73,44 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
         raw_xml = await request.body()
 
+        # Handle empty payload (healthcheck request)
         if not raw_xml.strip():
             logger.warning("⚠️ Received empty ping/healthcheck")
             return success_response
 
+        # Log the raw XML content for debugging
         logger.debug(f"📨 Raw Callback Content:\n{raw_xml.decode()}")
 
         try:
+            # Parse XML response
             data = xmltodict.parse(raw_xml)
         except Exception as e:
             logger.error(f"🚨 XML Parsing Failed: {str(e)}")
             return success_response
 
+        # Log parsed callback data for debugging
         logger.debug(f"📜 Parsed Callback Data:\n{data}")
 
-        # Dynamically find STKCallback element regardless of namespace
-        envelope = data.get('soapenv:Envelope', {})
-        body = envelope.get('soapenv:Body', {})
-        callback_key = next((key for key in body if key.endswith('STKCallback')), None)
+        # Extract the STKCallback data from the parsed XML
+        callback = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('ns0:STKCallback')
 
-        if not callback_key:
-            logger.error("❌ STKCallback not found in XML data")
+        if not callback:
+            logger.error("❌ Invalid callback structure or missing STKCallback")
             return success_response
 
-        callback = body[callback_key]
+        # Get transaction ID and result code from the callback
+        transaction_id = callback.get('CheckoutRequestID')
+        result_code = int(callback.get('ResultCode', -1))
 
-        # Extract CheckoutRequestID dynamically
-        checkout_request_id_key = next((k for k in callback if k.endswith('CheckoutRequestID')), None)
-        transaction_id = callback.get(checkout_request_id_key) if checkout_request_id_key else None
-
-        # Extract ResultCode dynamically
-        result_code_key = next((k for k in callback if k.endswith('ResultCode')), None)
-        result_code = int(callback.get(result_code_key, -1)) if result_code_key else -1
-
-        if not transaction_id:
-            logger.error("❌ CheckoutRequestID missing in callback")
-            return success_response
-
+        # Find the transaction in the database
         transaction = db.query(MpesaTransaction).filter_by(transaction_id=transaction_id).first()
         if transaction:
+            # Update transaction status based on the result code
             transaction.status = "successful" if result_code == 0 else "failed"
-            
-            if result_code == 0:
-                # Extract CallbackMetadata items
-                metadata_key = next((k for k in callback if k.endswith('CallbackMetadata')), None)
-                if metadata_key:
-                    items = callback[metadata_key].get('Item', [])
-                    item_dict = {}
-                    for item in items:
-                        name_key = next((k for k in item if k.endswith('Name')), None)
-                        value_key = next((k for k in item if k.endswith('Value')), None)
-                        if name_key and value_key:
-                            name = item[name_key]
-                            value = item[value_key]
-                            item_dict[name] = value
-                    transaction.mpesa_code = item_dict.get('MpesaReceiptNumber')
-                    transaction.phone_number = item_dict.get('PhoneNumber')
-            
+            if result_code == 0 and 'CallbackMetadata' in callback:
+                items = {item['Name']: item['Value'] for item in callback['CallbackMetadata']['Item']}
+                transaction.mpesa_code = items.get('MpesaReceiptNumber')
+                transaction.phone_number = items.get('PhoneNumber')
             db.commit()
             logger.info(f"✅ Updated transaction {transaction_id} to {transaction.status}")
         else:
@@ -132,5 +119,6 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         return success_response
 
     except Exception as e:
+        # Log critical errors and return a success response to M-Pesa
         logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
         return success_response

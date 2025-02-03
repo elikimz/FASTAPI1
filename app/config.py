@@ -13,10 +13,10 @@ class Setting(BaseSettings):
  algorithm: str 
  access_token_expire_minutes: int   
  MPESA_CONSUMER_KEY :str
- MPESA_CONSUMER_SECRET :str
- MPESA_SHORTCODE :str
- MPESA_PASSKEY :str
- CALLBACK_URL :str
+ MPESA_CONSUMER_SECRET:str
+ MPESA_SHORTCODE:str
+ MPESA_PASSKEY:str
+ CALLBACK_URL:str
 
 
     
@@ -29,5 +29,6 @@ print(setting.database_hostname)
 print(setting.database_port)
 print(setting.database_password)
 print(setting.database_username)
+print(setting.CALLBACK_URL)
 
 

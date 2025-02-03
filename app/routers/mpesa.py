@@ -96,6 +96,7 @@ async def mpesa_callback(request: Request):
         except Exception as e:
             logger.warning(f"Error parsing XML: {str(e)}")
 
+    # If no valid body content was found
     if not json_body and not raw_text:
         logger.error("Received empty body, no valid data to process.")
         return {"ResultCode": 1, "ResultDesc": "Failure, empty body"}

@@ -62,19 +62,26 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         raw_body = await request.body()
         if not raw_body:
             logging.error("Callback body is empty")
-            # Return the expected structure even for empty body
-            return {"ResultCode": 0, "ResultDesc": "Success"}
-        
-        content_type = request.headers.get('Content-Type', '')
-        if 'application/json' in content_type:
+            return {"ResultCode": 1, "ResultDesc": "Empty request"}
+
+        content_type = request.headers.get("Content-Type", "")
+
+        if "application/json" in content_type:
             callback_data = json.loads(raw_body.decode())
-            # Process callback_data here
+        elif "application/xml" in content_type:
+            try:
+                callback_data = xmltodict.parse(raw_body)
+            except Exception as e:
+                logging.error(f"Failed to parse XML: {e}")
+                return {"ResultCode": 1, "ResultDesc": "Invalid XML"}
         else:
-            # Handle other content types if necessary
-            pass
-        
-        # Always return the expected response to M-Pesa
+            logging.error(f"Unsupported Content-Type: {content_type}")
+            return {"ResultCode": 1, "ResultDesc": "Unsupported Content-Type"}
+
+        logging.info(f"Received M-Pesa Callback: {callback_data}")
+
         return {"ResultCode": 0, "ResultDesc": "Success"}
+    
     except Exception as e:
         logging.error(f"Error processing callback: {str(e)}")
         return {"ResultCode": 1, "ResultDesc": "Error processing callback"}

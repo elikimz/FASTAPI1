@@ -63,6 +63,9 @@ async def mpesa_callback(request: Request):
     raw_text = raw_body.decode(errors="ignore").strip()
     logger.debug(f"Raw Callback Body: {raw_text}")
     
+    # Initialize json_body variable to None before the try block
+    json_body = None
+    
     # Try parsing as JSON
     try:
         json_body = await request.json()
@@ -71,9 +74,9 @@ async def mpesa_callback(request: Request):
         logger.warning(f"Error parsing JSON: {str(e)}")
     
     # Try parsing as XML if JSON parsing fails
-    if not json_body:
+    if json_body is None:  # Use `json_body is None` instead of `not json_body`
         try:
-            xml_body = await request.body()
+            xml_body = raw_text  # Use raw_text since XML is not parsed here
             logger.debug(f"Parsed XML Callback: {xml_body}")
             # You can further process XML if necessary
         except Exception as e:

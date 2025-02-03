@@ -57,17 +57,26 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 @router.post("/callback")
-async def mpesa_callback(request: Request):
+async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        # Get the raw body of the incoming request
         raw_body = await request.body()
+        callback_data = json.loads(raw_body.decode('utf-8', errors='replace'))
+        logging.info(f"Raw Callback Body: {callback_data}")
 
-        # Log the raw callback body (decode bytes into string)
-        logging.info(f"Raw Callback Body: {raw_body.decode('utf-8', errors='replace')}")
-
-        # You can add the further processing here
-        return {"message": "Received callback successfully"}
+        # Extracting fields from the callback to update the transaction
+        response_code = callback_data.get("ResponseCode")
+        if response_code == "0":
+            # Process success callback
+            checkout_request_id = callback_data["CheckoutRequestID"]
+            transaction = db.query(MpesaTransaction).filter(MpesaTransaction.checkout_request_id == checkout_request_id).first()
+            if transaction:
+                transaction.status = "completed"
+                db.commit()
+                return {"message": "Transaction completed successfully."}
+        else:
+            logging.error(f"Callback failed with response code: {response_code}")
+            return {"message": "Failed to process transaction."}
 
     except Exception as e:
         logging.error(f"Error processing callback: {str(e)}")
-        return {"message": "Error processing callback"}
+        return {"message": "Error processing callback."}

@@ -59,25 +59,26 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
+        # Log the headers
+        logging.info(f"Request headers: {request.headers}")
+        
         raw_body = await request.body()
         logging.info(f"Raw Callback Body: {raw_body.decode('utf-8', errors='replace')}")
-        logging.info(f"Request headers: {request.headers}")
-
-        # Try parsing as JSON (if applicable)
+        
         if not raw_body:
             logging.error("Callback body is empty")
             return {"message": "Empty callback body received"}
-
-        callback_data = json.loads(raw_body.decode('utf-8', errors='replace'))
-        logging.info(f"Parsed Callback Data: {callback_data}")
+            
+        # Process the body based on the content type
+        if request.headers.get('Content-Type') == 'application/json':
+            callback_data = json.loads(raw_body.decode('utf-8', errors='replace'))
+        else:
+            # Handle other formats (e.g., URL encoded or XML) as needed
+            callback_data = raw_body.decode('utf-8', errors='replace')
         
-        # Process the callback data
-        # ...
+        logging.info(f"Parsed Callback Data: {callback_data}")
         return {"message": "Callback processed successfully"}
 
-    except json.JSONDecodeError as e:
-        logging.error(f"JSON decode error: {str(e)}")
-        return {"message": "Failed to decode callback data"}
     except Exception as e:
         logging.error(f"Error processing callback: {str(e)}")
         return {"message": "Error processing callback"}

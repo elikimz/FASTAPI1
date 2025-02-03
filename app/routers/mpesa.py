@@ -58,14 +58,18 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 # Callback endpoint to receive M-Pesa response
 @router.post("/mpesa/callback")
 async def mpesa_callback(request: Request):
-    # Log raw body
+    # Log raw body to ensure we capture the exact data sent to the server
     raw_body = await request.body()
     raw_text = raw_body.decode(errors="ignore").strip()
-    logger.debug(f"Raw Callback Body: {raw_text}")
-    
-    # Initialize json_body variable to None before the try block
+    logger.debug(f"Raw Callback Body: {raw_text}")  # Log the raw body content
+
+    # Initialize json_body variable to None before trying to parse it
     json_body = None
     
+    # Log the content type to ensure we're processing the correct format
+    content_type = request.headers.get("Content-Type")
+    logger.debug(f"Content-Type: {content_type}")
+
     # Try parsing as JSON
     try:
         json_body = await request.json()
@@ -74,12 +78,19 @@ async def mpesa_callback(request: Request):
         logger.warning(f"Error parsing JSON: {str(e)}")
     
     # Try parsing as XML if JSON parsing fails
-    if json_body is None:  # Use `json_body is None` instead of `not json_body`
+    if json_body is None:  # Only proceed to XML parsing if JSON is not available
         try:
-            xml_body = raw_text  # Use raw_text since XML is not parsed here
+            # If JSON parsing fails, check the raw text for XML structure
+            xml_body = raw_text  # Use the raw_text here for XML parsing
             logger.debug(f"Parsed XML Callback: {xml_body}")
-            # You can further process XML if necessary
+            # You can further process XML if needed
         except Exception as e:
             logger.warning(f"Error parsing XML: {str(e)}")
     
+    # If no valid data was found (both JSON and XML parsing failed), log and return an error response
+    if json_body is None and not raw_text:
+        logger.error("Received empty body, no valid data to process.")
+        return {"ResultCode": 1, "ResultDesc": "Failure, empty body"}
+
+    # Successfully processed request, return success
     return {"ResultCode": 0, "ResultDesc": "Success"}

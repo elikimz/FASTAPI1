@@ -56,32 +56,89 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 
+
+# XML response templates
+SUCCESS_XML_RESPONSE = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+   <soapenv:Body>
+      <CheckoutResponse>
+         <ResultCode>0</ResultCode>
+         <ResultDesc>Success</ResultDesc>
+      </CheckoutResponse>
+   </soapenv:Body>
+</soapenv:Envelope>"""
+
+ERROR_XML_RESPONSE = """<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
+   <soapenv:Body>
+      <CheckoutResponse>
+         <ResultCode>1</ResultCode>
+         <ResultDesc>Error processing request</ResultDesc>
+      </CheckoutResponse>
+   </soapenv:Body>
+</soapenv:Envelope>"""
+
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
         raw_body = await request.body()
         if not raw_body:
-            logging.error("Callback body is empty")
-            return {"ResultCode": 1, "ResultDesc": "Empty request"}
+            logger.error("Callback body is empty")
+            return Response(content=ERROR_XML_RESPONSE, media_type="application/xml")
 
-        content_type = request.headers.get("Content-Type", "")
+        content_type = request.headers.get("Content-Type", "").lower()
 
-        if "application/json" in content_type:
-            callback_data = json.loads(raw_body.decode())
-        elif "application/xml" in content_type:
+        # Parse XML data
+        if "xml" in content_type:
             try:
-                callback_data = xmltodict.parse(raw_body)
+                xml_data = raw_body.decode("utf-8")
+                callback_data = xmltodict.parse(xml_data)
+                logger.debug(f"Parsed XML callback data: {callback_data}")
             except Exception as e:
-                logging.error(f"Failed to parse XML: {e}")
-                return {"ResultCode": 1, "ResultDesc": "Invalid XML"}
+                logger.error(f"Error parsing XML: {str(e)}")
+                return Response(content=ERROR_XML_RESPONSE, media_type="application/xml")
+
+            # Extract data from parsed XML (adjust based on actual XML structure)
+            try:
+                envelope = callback_data.get("soapenv:Envelope", {})
+                body = envelope.get("soapenv:Body", {})
+                checkout_response = body.get("CheckoutResponse", {})
+                
+                result_code = checkout_response.get("ResultCode")
+                checkout_request_id = checkout_response.get("CheckoutRequestID")
+                merchant_request_id = checkout_response.get("MerchantRequestID")
+                result_desc = checkout_response.get("ResultDesc")
+
+                logger.info(f"ResultCode: {result_code}, CheckoutRequestID: {checkout_request_id}")
+
+                # Update transaction status
+                if result_code == "0":
+                    transaction = db.query(MpesaTransaction).filter(
+                        MpesaTransaction.checkout_request_id == checkout_request_id
+                    ).first()
+
+                    if transaction:
+                        transaction.status = "completed"
+                        transaction.merchant_request_id = merchant_request_id
+                        transaction.result_code = result_code
+                        transaction.result_desc = result_desc
+                        db.commit()
+                        logger.info(f"Transaction {checkout_request_id} updated to 'completed'")
+                    else:
+                        logger.warning(f"Transaction {checkout_request_id} not found")
+                else:
+                    logger.error(f"Transaction failed: {result_desc}")
+
+            except Exception as e:
+                logger.error(f"Error processing callback data: {str(e)}", exc_info=True)
+                return Response(content=ERROR_XML_RESPONSE, media_type="application/xml")
+
         else:
-            logging.error(f"Unsupported Content-Type: {content_type}")
-            return {"ResultCode": 1, "ResultDesc": "Unsupported Content-Type"}
+            logger.error(f"Unsupported content type: {content_type}")
+            return Response(content=ERROR_XML_RESPONSE, media_type="application/xml")
 
-        logging.info(f"Received M-Pesa Callback: {callback_data}")
+        return Response(content=SUCCESS_XML_RESPONSE, media_type="application/xml")
 
-        return {"ResultCode": 0, "ResultDesc": "Success"}
-    
     except Exception as e:
-        logging.error(f"Error processing callback: {str(e)}")
-        return {"ResultCode": 1, "ResultDesc": "Error processing callback"}
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        return Response(content=ERROR_XML_RESPONSE, media_type="application/xml")

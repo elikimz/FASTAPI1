@@ -60,23 +60,24 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
         raw_body = await request.body()
+        logging.info(f"Raw Callback Body: {raw_body.decode('utf-8', errors='replace')}")
+        logging.info(f"Request headers: {request.headers}")
+
+        # Try parsing as JSON (if applicable)
+        if not raw_body:
+            logging.error("Callback body is empty")
+            return {"message": "Empty callback body received"}
+
         callback_data = json.loads(raw_body.decode('utf-8', errors='replace'))
-        logging.info(f"Raw Callback Body: {callback_data}")
+        logging.info(f"Parsed Callback Data: {callback_data}")
+        
+        # Process the callback data
+        # ...
+        return {"message": "Callback processed successfully"}
 
-        # Extracting fields from the callback to update the transaction
-        response_code = callback_data.get("ResponseCode")
-        if response_code == "0":
-            # Process success callback
-            checkout_request_id = callback_data["CheckoutRequestID"]
-            transaction = db.query(MpesaTransaction).filter(MpesaTransaction.checkout_request_id == checkout_request_id).first()
-            if transaction:
-                transaction.status = "completed"
-                db.commit()
-                return {"message": "Transaction completed successfully."}
-        else:
-            logging.error(f"Callback failed with response code: {response_code}")
-            return {"message": "Failed to process transaction."}
-
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON decode error: {str(e)}")
+        return {"message": "Failed to decode callback data"}
     except Exception as e:
         logging.error(f"Error processing callback: {str(e)}")
-        return {"message": "Error processing callback."}
+        return {"message": "Error processing callback"}

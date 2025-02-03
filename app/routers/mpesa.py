@@ -56,68 +56,27 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 # Set up logging
 # Callback endpoint to receive M-Pesa response
-@router.post("/callback")
-async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    success_response = {"ResultCode": 0, "ResultDesc": "Success"}
-
+@router.post("/mpesa/callback")
+async def mpesa_callback(request: Request):
+    # Log raw body
+    raw_body = await request.body()
+    raw_text = raw_body.decode(errors="ignore").strip()
+    logger.debug(f"Raw Callback Body: {raw_text}")
+    
+    # Try parsing as JSON
     try:
-        # Log raw body
-        raw_body = await request.body()  # Capture the raw request body
-        raw_text = raw_body.decode(errors="ignore").strip()  # Decode the body as a string
-        logger.debug(f"Raw Callback Body: {raw_text}")  # Log the raw body to see the full data
-
-        # If the body is empty, log it and return success to avoid retry loops
-        if not raw_text:
-            logger.warning("⚠️ Empty request received from M-Pesa")
-            return success_response
-
-        # Try parsing JSON first
-        try:
-            json_body = await request.json()  # Try to parse as JSON
-            logger.debug(f"Parsed JSON Data: {json_body}")
-            return success_response  # You can choose to return success or handle accordingly
-        except Exception as e:
-            logger.debug(f"JSON Parsing Error: {str(e)}")  # If JSON parsing fails, log the error
-
-        # Try parsing XML if JSON fails
-        try:
-            data = xmltodict.parse(raw_text)  # Try to parse the raw body as XML
-            logger.debug(f"Parsed XML Data: {data}")  # Log the parsed XML data
-
-            # Process the parsed data (e.g., extract important fields for transaction updates)
-            if data and 'Body' in data:
-                body = data['Body']
-                if 'stkCallback' in body:
-                    stk_callback = body['stkCallback']
-                    result_code = stk_callback.get('ResultCode', None)
-                    result_desc = stk_callback.get('ResultDesc', None)
-                    checkout_request_id = stk_callback.get('CheckoutRequestID', None)
-
-                    # Handle the data and update your database or any other logic
-                    if result_code == '0':  # Success
-                        # You can update the transaction status in the database here
-                        transaction = db.query(MpesaTransaction).filter(MpesaTransaction.transaction_id == checkout_request_id).first()
-                        if transaction:
-                            transaction.status = "success"
-                            transaction.mpesa_code = result_desc  # You can store the result description or any other code
-                            db.commit()
-                            logger.info(f"Transaction {checkout_request_id} updated to success.")
-                    else:  # Failure
-                        # Handle failure scenario
-                        transaction = db.query(MpesaTransaction).filter(MpesaTransaction.transaction_id == checkout_request_id).first()
-                        if transaction:
-                            transaction.status = "failed"
-                            db.commit()
-                            logger.info(f"Transaction {checkout_request_id} marked as failed.")
-
-        except xml.parsers.expat.ExpatError as e:
-            logger.error(f"XML Parsing Error: {str(e)}")
-            return success_response  # Return success to prevent retry loops
-        except Exception as e:
-            logger.error(f"General Error during XML parsing: {str(e)}")
-            return success_response  # Return success to prevent retry loops
-
+        json_body = await request.json()
+        logger.debug(f"Parsed JSON Callback: {json_body}")
     except Exception as e:
-        logger.error(f"Critical Error: {str(e)}", exc_info=True)
-
-    return success_response
+        logger.warning(f"Error parsing JSON: {str(e)}")
+    
+    # Try parsing as XML if JSON parsing fails
+    if not json_body:
+        try:
+            xml_body = await request.body()
+            logger.debug(f"Parsed XML Callback: {xml_body}")
+            # You can further process XML if necessary
+        except Exception as e:
+            logger.warning(f"Error parsing XML: {str(e)}")
+    
+    return {"ResultCode": 0, "ResultDesc": "Success"}

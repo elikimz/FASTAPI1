@@ -1,5 +1,6 @@
 
 from datetime import datetime
+from uuid import uuid4
 from .database import Base
 from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Float, Integer, Numeric, String, text,ForeignKey
 from sqlalchemy.orm import relationship
@@ -44,13 +45,23 @@ class Vote(Base):
 class MpesaTransaction(Base):
     __tablename__ = "mpesa_transactions"
 
-    id = Column(String(50), primary_key=True)  # ✅ Primary Key
-    transaction_id = Column(String(50), unique=True)  # ✅ Add this field
+    # Use UUID as primary key with server-side default
+    id = Column(
+        String(36), 
+        primary_key=True,
+        default=lambda: str(uuid4()),  # Python-side default
+        server_default=text("gen_random_uuid()"),  # PostgreSQL function
+        unique=True,
+        index=True
+    )
     merchant_request_id = Column(String(50))
     checkout_request_id = Column(String(50), unique=True)
     amount = Column(Numeric(15, 2))
     phone_number = Column(String(15))
     transaction_date = Column(DateTime)
-    status = Column(String(20), default="pending")  # ✅ Add status field
-    result_code = Column(String(10))  # ✅ Store M-Pesa result code
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    status = Column(String(20), default="pending")
+    result_code = Column(String(10))
+    created_at = Column(DateTime, server_default=text("now()"))
+
+    # Add this if you want to handle updates
+    updated_at = Column(DateTime, onupdate=datetime.utcnow)

@@ -42,13 +42,14 @@ class Vote(Base):
 
 class MpesaTransaction(Base):
     __tablename__ = "mpesa_transactions"
-    
-    id = Column(String(50), primary_key=True)
+
+    id = Column(String(50), primary_key=True)  # ✅ Primary Key
+    transaction_id = Column(String(50), unique=True)  # ✅ Add this field
     merchant_request_id = Column(String(50))
     checkout_request_id = Column(String(50), unique=True)
     amount = Column(Numeric(15, 2))
     phone_number = Column(String(15))
     transaction_date = Column(DateTime)
-    status = Column(String(20), default="pending")  # Add status field
-    result_code = Column(String(10))  # Store M-Pesa result code
+    status = Column(String(20), default="pending")  # ✅ Add status field
+    result_code = Column(String(10))  # ✅ Store M-Pesa result code
     created_at = Column(DateTime, default=lambda: datetime.utcnow())

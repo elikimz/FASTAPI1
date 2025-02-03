@@ -27,6 +27,34 @@ def normalize_phone_number(phone_number: str):
         raise ValueError("Invalid phone number. Use 07XXXXXXXX or 2547XXXXXXXX.")
     
 # Endpoint to initiate payment
+@router.post("/pay")
+def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get_db)):
+    try:
+        phone_number = normalize_phone_number(phone_number)  # Normalize the phone number
+        response = stk_push_request(phone_number, amount)
+        logger.info(f"M-Pesa Response: {response}")  # Log the full response
+
+        response_code = response.get("ResponseCode", "unknown")
+        if response_code == "0":
+            transaction = MpesaTransaction(
+                phone_number=phone_number,
+                amount=amount,
+                transaction_id=response["CheckoutRequestID"],
+                status="pending"
+            )
+            db.add(transaction)
+            db.commit()
+            return {"message": "Payment request sent", "transaction_id": response["CheckoutRequestID"]}
+        else:
+            error_message = response.get('errorMessage', 'Unknown error')
+            raise HTTPException(status_code=400, detail=f"Payment request failed: {error_message}")
+    except Exception as e:
+        logger.error(f"Error initiating payment: {str(e)}")  # Log the exception
+        raise HTTPException(status_code=500, detail="Internal server error while initiating payment")
+
+
+
+
 @router.post("/mpesa/callback")
 async def mpesa_callback(request: Request):
     # Log request headers to understand what is being sent

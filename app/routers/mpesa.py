@@ -40,7 +40,7 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
             transaction = MpesaTransaction(
                 phone_number=phone_number,
                 amount=amount,
-                transaction_id=response["CheckoutRequestID"],
+                checkout_request_id=response["CheckoutRequestID"],  # Correct field
                 status="pending"
             )
             db.add(transaction)

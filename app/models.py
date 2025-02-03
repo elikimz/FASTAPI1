@@ -55,7 +55,7 @@ class MpesaTransaction(Base):
         index=True
     )
     merchant_request_id = Column(String(50))
-    checkout_request_id = Column(String(50), unique=True)
+    checkout_request_id = Column(String(50), unique=True)  # Ensure the field name matches here
     amount = Column(Numeric(15, 2))
     phone_number = Column(String(15))
     transaction_date = Column(DateTime)

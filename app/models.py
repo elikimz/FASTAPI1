@@ -1,6 +1,6 @@
 import datetime
 from .database import Base
-from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Float, Integer, String, text,ForeignKey
+from sqlalchemy import TIMESTAMP, Boolean, Column, DateTime, Float, Integer, Numeric, String, text,ForeignKey
 from sqlalchemy.orm import relationship
 
 class Post(Base):
@@ -42,11 +42,13 @@ class Vote(Base):
 
 class MpesaTransaction(Base):
     __tablename__ = "mpesa_transactions"
-
-    id = Column(Integer, primary_key=True, index=True)
-    phone_number = Column(String, nullable=False)
-    amount = Column(Integer, nullable=False)
-    transaction_id = Column(String, unique=True, nullable=True)  # Will be set after payment
-    mpesa_code = Column(String, nullable=True)
-    status = Column(String(20), default="pending")# "Pending", "Success", "Failed"
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)    
+    
+    id = Column(String(50), primary_key=True)
+    merchant_request_id = Column(String(50))
+    checkout_request_id = Column(String(50), unique=True)
+    amount = Column(Numeric(15, 2))
+    phone_number = Column(String(15))
+    transaction_date = Column(DateTime)
+    status = Column(String(20), default="pending")  # Add status field
+    result_code = Column(String(10))  # Store M-Pesa result code
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())

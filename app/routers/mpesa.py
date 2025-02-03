@@ -59,45 +59,90 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        # Get raw XML body
+        # Get raw request body
         raw_body = await request.body()
-        logger.debug(f"Raw Callback Body: {raw_body.decode()}")
+        logger.debug(f"Raw callback body length: {len(raw_body)} bytes")
 
+        # Handle empty body immediately
         if not raw_body:
-            logger.warning("Empty callback received")
-            return Response(content="<Response><ResultCode>1</ResultCode><ResultDesc>Empty request</ResultDesc></Response>", media_type="application/xml")
+            logger.error("Received empty callback body")
+            return Response(
+                content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>1</ResultCode><ResultDesc>Empty request</ResultDesc></Response>',
+                media_type="application/xml"
+            )
 
-        # Parse XML to dict
-        data = xmltodict.parse(raw_body)
-        logger.debug(f"Parsed Callback Data: {data}")
+        # Convert bytes to string for inspection
+        raw_text = raw_body.decode('utf-8', errors='replace').strip()
+        logger.debug(f"Raw callback content:\n{raw_text}")
 
-        # Extract critical information
-        callback_data = data.get("SOAP-ENV:Envelope", {}).get("SOAP-ENV:Body", {}).get("CheckoutRequestResponse", {})
-        result_code = callback_data.get("ResultCode")
-        checkout_id = callback_data.get("CheckoutRequestID")
+        # Validate basic XML structure
+        if not raw_text.startswith('<'):
+            logger.error("Received non-XML content in callback")
+            return Response(
+                content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>1</ResultCode><ResultDesc>Invalid format</ResultDesc></Response>',
+                media_type="application/xml"
+            )
 
-        if not checkout_id:
-            logger.error("Missing CheckoutRequestID in callback")
-            return Response(content="<Response><ResultCode>1</ResultCode><ResultDesc>Missing CheckoutRequestID</ResultDesc></Response>", media_type="application/xml")
+        # Parse XML with error handling
+        try:
+            data = xmltodict.parse(raw_body)
+            logger.debug(f"Parsed XML data: {json.dumps(data, indent=2)}")
+        except Exception as e:
+            logger.error(f"XML parsing failed: {str(e)}")
+            logger.error(f"Faulty XML content: {raw_text}")
+            return Response(
+                content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>1</ResultCode><ResultDesc>Invalid XML</ResultDesc></Response>',
+                media_type="application/xml"
+            )
 
-        # Update database
-        transaction = db.query(MpesaTransaction).filter(
-            MpesaTransaction.checkout_request_id == checkout_id
-        ).first()
+        # Extract transaction details based on M-Pesa's actual structure
+        try:
+            stk_call = data.get('soapenv:Envelope', {}).get('soapenv:Body', {}).get('stkCallback', {})
+            if not stk_call:
+                stk_call = data.get('SOAP-ENV:Envelope', {}).get('SOAP-ENV:Body', {}).get('stkCallback', {})
 
-        if transaction:
-            transaction.status = "completed" if result_code == "0" else "failed"
-            db.commit()
-            logger.info(f"Updated transaction {checkout_id} to status {transaction.status}")
-        else:
-            logger.warning(f"Transaction not found for CheckoutRequestID: {checkout_id}")
+            result_code = stk_call.get('ResultCode')
+            checkout_id = stk_call.get('CheckoutRequestID')
+            merchant_id = stk_call.get('MerchantRequestID')
 
-        # Return XML response as required by M-Pesa
+            if not all([result_code, checkout_id, merchant_id]):
+                logger.error("Missing required fields in callback")
+                logger.error(f"Full callback data: {data}")
+                return Response(
+                    content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>1</ResultCode><ResultDesc>Missing fields</ResultDesc></Response>',
+                    media_type="application/xml"
+                )
+
+            # Update database transaction
+            transaction = db.query(MpesaTransaction).filter(
+                MpesaTransaction.checkout_request_id == checkout_id
+            ).first()
+
+            if transaction:
+                transaction.status = "completed" if result_code == "0" else "failed"
+                transaction.result_code = result_code
+                transaction.merchant_request_id = merchant_id
+                db.commit()
+                logger.info(f"Updated transaction {checkout_id} with result code {result_code}")
+            else:
+                logger.warning(f"Transaction not found for CheckoutID: {checkout_id}")
+
+        except Exception as e:
+            logger.error(f"Callback processing failed: {str(e)}")
+            return Response(
+                content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>1</ResultCode><ResultDesc>Processing error</ResultDesc></Response>',
+                media_type="application/xml"
+            )
+
+        # Always return XML response
         return Response(
-            content=f'<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+            content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
             media_type="application/xml"
         )
 
     except Exception as e:
-        logger.error(f"Callback processing error: {str(e)}", exc_info=True)
-        return Response(content="<Response><ResultCode>1</ResultCode><ResultDesc>Error processing request</ResultDesc></Response>", media_type="application/xml")
+        logger.error(f"Unexpected error in callback: {str(e)}", exc_info=True)
+        return Response(
+            content='<?xml version="1.0" encoding="UTF-8"?><Response><ResultCode>1</ResultCode><ResultDesc>Server error</ResultDesc></Response>',
+            media_type="application/xml"
+        )

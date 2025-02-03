@@ -60,16 +60,10 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     success_response = {"ResultCode": 0, "ResultDesc": "Success"}
 
     try:
-        # Log request method and headers
-        logger.debug(f"🔍 Request Method: {request.method}")
-        logger.debug(f"📨 Request Headers: {dict(request.headers)}")
-
-        # Read and log raw body
         raw_body = await request.body()
         raw_text = raw_body.decode(errors="ignore").strip()
-        logger.debug(f"📨 Raw Request Body: {raw_text}")
+        logger.debug(f"📨 Raw Callback Body: {raw_text}")
 
-        # If body is empty, log it and return success to avoid retry loops
         if not raw_text:
             logger.warning("⚠️ Empty request received from M-Pesa")
             return success_response
@@ -78,25 +72,47 @@ async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
         try:
             json_body = await request.json()
             logger.debug(f"📜 Parsed JSON Data: {json.dumps(json_body, indent=2)}")
-            return success_response  # Stop here to analyze logs
-        except Exception as e:
-            logger.debug("📌 Not JSON, attempting XML parsing...")
-            logger.error(f"🔥 JSON Parsing Error: {str(e)}")  # Log JSON parsing error
 
-        # Try parsing XML
-        try:
-            data = xmltodict.parse(raw_text)
-            logger.debug(f"📜 Parsed XML Data: {json.dumps(data, indent=2)}")
-        except xml.parsers.expat.ExpatError as e:
-            logger.error(f"🔥 XML Parsing Error (Expat): {str(e)}")
-            return success_response  # Return success to prevent retry loops
+            result_code = json_body.get("Body", {}).get("stkCallback", {}).get("ResultCode")
+            checkout_request_id = json_body.get("Body", {}).get("stkCallback", {}).get("CheckoutRequestID")
+
+            if result_code == 0:
+                # Extract transaction details
+                callback_metadata = json_body["Body"]["stkCallback"]["CallbackMetadata"]["Item"]
+                mpesa_receipt_number = None
+                phone_number = None
+
+                for item in callback_metadata:
+                    if item["Name"] == "MpesaReceiptNumber":
+                        mpesa_receipt_number = item["Value"]
+                    if item["Name"] == "PhoneNumber":
+                        phone_number = str(item["Value"])
+
+                if not mpesa_receipt_number:
+                    logger.error("❌ MpesaReceiptNumber not found in callback")
+                    return success_response
+
+                # Find the transaction using CheckoutRequestID
+                transaction = db.query(MpesaTransaction).filter_by(transaction_id=checkout_request_id).first()
+
+                if transaction:
+                    transaction.mpesa_code = mpesa_receipt_number
+                    transaction.status = "Success"
+                    db.commit()
+                    logger.info(f"✅ Transaction {checkout_request_id} updated with M-Pesa code {mpesa_receipt_number}")
+
+            else:
+                # Failed Transaction
+                transaction = db.query(MpesaTransaction).filter_by(transaction_id=checkout_request_id).first()
+                if transaction:
+                    transaction.status = "Failed"
+                    db.commit()
+                    logger.warning(f"⚠️ Transaction {checkout_request_id} marked as Failed")
+
         except Exception as e:
-            logger.error(f"🔥 General XML Parsing Error: {str(e)}")
-            return success_response  # Return success to prevent retry loops
+            logger.error(f"🔥 JSON Parsing Error: {str(e)}")
 
     except Exception as e:
         logger.error(f"🔥 Critical Error: {str(e)}", exc_info=True)
 
     return success_response
-
-

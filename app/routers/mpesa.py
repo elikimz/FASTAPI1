@@ -7,7 +7,8 @@ from ..models import MpesaTransaction
 from .mpesa_aouth import stk_push_request  # import for stk_push_request
 import json 
 import xmltodict  
-router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
+router = APIRouter(prefix="/mpesa",
+                    tags=["M-Pesa"])
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 
-@router.post("/mpesa/callback")
+@router.post("/callback")
 async def mpesa_callback(request: Request):
     # Log request headers to understand what is being sent
     headers = request.headers

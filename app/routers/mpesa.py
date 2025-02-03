@@ -59,21 +59,24 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 @router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     try:
-        # Log the headers
+        # Log request headers
         logging.info(f"Request headers: {request.headers}")
         
+        # Read raw body and log it
         raw_body = await request.body()
         logging.info(f"Raw Callback Body: {raw_body.decode('utf-8', errors='replace')}")
-        
+
+        # If the body is empty, log a warning and return a response
         if not raw_body:
             logging.error("Callback body is empty")
             return {"message": "Empty callback body received"}
-            
+        
         # Process the body based on the content type
-        if request.headers.get('Content-Type') == 'application/json':
+        content_type = request.headers.get('Content-Type', '')
+        if 'application/json' in content_type:
             callback_data = json.loads(raw_body.decode('utf-8', errors='replace'))
         else:
-            # Handle other formats (e.g., URL encoded or XML) as needed
+            # Log other types (if needed)
             callback_data = raw_body.decode('utf-8', errors='replace')
         
         logging.info(f"Parsed Callback Data: {callback_data}")

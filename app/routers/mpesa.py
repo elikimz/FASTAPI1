@@ -59,7 +59,7 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 import logging
 from fastapi import Request
 
-@router.post("/mpesa/callback")
+@router.post("/callback")
 async def mpesa_callback(request: Request):
     raw_body = await request.body()
     logging.info(f"Raw Callback Body: {raw_body.decode('utf-8', errors='replace')}")

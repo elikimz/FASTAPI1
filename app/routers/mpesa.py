@@ -54,8 +54,6 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 
-logger = logging.getLogger(__name__)
-router = APIRouter()
 
 @router.post("/mpesa/callback")
 async def mpesa_callback(request: Request):

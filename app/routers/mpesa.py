@@ -57,48 +57,47 @@ def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get
 
 
 @router.post("/callback")
-async def mpesa_callback(request: Request):
-    # Log request headers to understand what is being sent
-    headers = request.headers
-    logger.debug(f"Request Headers: {headers}")
-    logger.debug(f"Content-Type: {request.headers.get('Content-Type')}")
-    logger.debug(f"Content-Length: {request.headers.get('Content-Length')}")
+async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    try:
+        # Get raw XML body
+        raw_body = await request.body()
+        logger.debug(f"Raw Callback Body: {raw_body.decode()}")
 
-    # Try reading and logging the raw body
-    raw_body = await request.body()
-    logger.debug(f"Raw Callback Body (bytes): {raw_body}")
+        if not raw_body:
+            logger.warning("Empty callback received")
+            return Response(content="<Response><ResultCode>1</ResultCode><ResultDesc>Empty request</ResultDesc></Response>", media_type="application/xml")
 
-    # If the body is empty, log that explicitly
-    if not raw_body:
-        logger.warning("Received an empty body from M-Pesa.")
+        # Parse XML to dict
+        data = xmltodict.parse(raw_body)
+        logger.debug(f"Parsed Callback Data: {data}")
 
-    # Attempt to decode body as a string
-    raw_text = raw_body.decode(errors="ignore").strip()
-    logger.debug(f"Raw Callback Body (decoded): {raw_text}")  # Log the raw decoded body
+        # Extract critical information
+        callback_data = data.get("SOAP-ENV:Envelope", {}).get("SOAP-ENV:Body", {}).get("CheckoutRequestResponse", {})
+        result_code = callback_data.get("ResultCode")
+        checkout_id = callback_data.get("CheckoutRequestID")
 
-    json_body = None
-    content_type = request.headers.get("Content-Type")
+        if not checkout_id:
+            logger.error("Missing CheckoutRequestID in callback")
+            return Response(content="<Response><ResultCode>1</ResultCode><ResultDesc>Missing CheckoutRequestID</ResultDesc></Response>", media_type="application/xml")
 
-    # Handle JSON payload
-    if content_type and "application/json" in content_type:
-        try:
-            json_body = await request.json()
-            logger.debug(f"Parsed JSON Callback: {json_body}")
-        except Exception as e:
-            logger.warning(f"Error parsing JSON: {str(e)}")
+        # Update database
+        transaction = db.query(MpesaTransaction).filter(
+            MpesaTransaction.checkout_request_id == checkout_id
+        ).first()
 
-    # Handle XML payload
-    if not json_body and content_type and "application/xml" in content_type:
-        try:
-            # Assuming the body is XML, you can process it here
-            xml_body = raw_text  # You can parse or log XML body here if needed
-            logger.debug(f"Parsed XML Callback: {xml_body}")
-        except Exception as e:
-            logger.warning(f"Error parsing XML: {str(e)}")
+        if transaction:
+            transaction.status = "completed" if result_code == "0" else "failed"
+            db.commit()
+            logger.info(f"Updated transaction {checkout_id} to status {transaction.status}")
+        else:
+            logger.warning(f"Transaction not found for CheckoutRequestID: {checkout_id}")
 
-    # If no valid body content was found
-    if not json_body and not raw_text:
-        logger.error("Received empty body, no valid data to process.")
-        return {"ResultCode": 1, "ResultDesc": "Failure, empty body"}
+        # Return XML response as required by M-Pesa
+        return Response(
+            content=f'<Response><ResultCode>0</ResultCode><ResultDesc>Success</ResultDesc></Response>',
+            media_type="application/xml"
+        )
 
-    return {"ResultCode": 0, "ResultDesc": "Success"}
+    except Exception as e:
+        logger.error(f"Callback processing error: {str(e)}", exc_info=True)
+        return Response(content="<Response><ResultCode>1</ResultCode><ResultDesc>Error processing request</ResultDesc></Response>", media_type="application/xml")

@@ -6,7 +6,8 @@ from ..database import get_db
 from ..models import MpesaTransaction
 from .mpesa_aouth import stk_push_request  # import for stk_push_request
 import json 
-import xmltodict  
+import xmltodict 
+from app import schemas 
 router = APIRouter(prefix="/mpesa",
                     tags=["M-Pesa"])
 
@@ -29,17 +30,17 @@ def normalize_phone_number(phone_number: str):
     
 # Endpoint to initiate payment
 @router.post("/pay")
-def initiate_payment(phone_number: str, amount: float, db: Session = Depends(get_db)):
+def initiate_payment(request: schemas.PaymentRequest, db: Session = Depends(get_db)):
     try:
-        phone_number = normalize_phone_number(phone_number)  # Normalize the phone number
-        response = stk_push_request(phone_number, amount)
+        phone_number = normalize_phone_number(request.phone_number)  # Normalize the phone number
+        response = stk_push_request(phone_number, request.amount)        
         logger.info(f"M-Pesa Response: {response}")  # Log the full response
 
         response_code = response.get("ResponseCode", "unknown")
         if response_code == "0":
             transaction = MpesaTransaction(
                 phone_number=phone_number,
-                amount=amount,
+                amount=request.amount,
                 checkout_request_id=response["CheckoutRequestID"],  # Correct field
                 status="pending"
             )

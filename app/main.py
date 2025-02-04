@@ -9,7 +9,6 @@ from .routers import post,user,auth,vote,mpesa
 from .config import Setting
 from fastapi.middleware.cors import CORSMiddleware
 
-
 # models.Base.metadata.create_all(bind=engine)
 
 

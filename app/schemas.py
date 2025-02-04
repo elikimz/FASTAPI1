@@ -100,4 +100,8 @@ class Vote(BaseModel):
             raise ValueError("dir must be 0 or 1")
         return value
     
-   
+# mpesa
+
+class PaymentRequest(BaseModel):
+    phone_number: str
+    amount: float

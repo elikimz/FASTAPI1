@@ -6,6 +6,7 @@ from ..models import MpesaTransaction
 from .mpesa_aouth import stk_push_request
 import xmltodict
 
+
 router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -46,21 +47,23 @@ def normalize_phone_number(phone_number: str) -> str:
     raise ValueError("Invalid phone number format. Use 07XXXXXXXX or 2547XXXXXXXX")
 
 @router.post("/pay")
-async def initiate_payment(
-    phone_number: str,  # Directly extract phone number from request
-    amount: float,      # Directly extract amount from request
-    db: Session = Depends(get_db)
-):
+async def initiate_payment(request: Request, db: Session = Depends(get_db)):
     """Process payment requests with M-Pesa STK Push"""
     try:
-        logger.info(f"Initiating payment for {phone_number}")
-        
-        # Convert and validate phone number
-        phone_number = normalize_phone_number(str(phone_number))  # Force string conversion
-        
-        # Process payment
+        data = await request.json()  # Extract JSON data directly
+        phone_number = data.get("phone_number")
+        amount = data.get("amount")
+
+        if not phone_number or not amount:
+            raise HTTPException(status_code=400, detail="Phone number and amount are required")
+
+        phone_number = normalize_phone_number(phone_number)
+
+        logger.info(f"Initiating payment for {phone_number}, Amount: {amount}")
+
+        # Process payment request
         stk_response = stk_push_request(phone_number, amount)
-        
+
         if stk_response.get("ResponseCode") != "0":
             error_msg = stk_response.get("errorMessage", "Payment request failed")
             logger.error(f"STK Error: {error_msg}")
@@ -76,10 +79,7 @@ async def initiate_payment(
         db.add(transaction)
         db.commit()
 
-        return {
-            "message": "Payment initiated",
-            "checkout_id": stk_response["CheckoutRequestID"]
-        }
+        return {"message": "Payment initiated", "checkout_id": stk_response["CheckoutRequestID"]}
 
     except ValueError as e:
         logger.error(f"Validation error: {str(e)}")
@@ -88,42 +88,3 @@ async def initiate_payment(
         logger.error(f"Payment error: {str(e)}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Internal server error")
-
-@router.post("/callback")
-async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    """Handle M-Pesa payment notifications"""
-    try:
-        raw_body = await request.body()
-        if not raw_body:
-            logger.error("Empty callback received")
-            return Response(content=XML_RESPONSES["error"], media_type="application/xml")
-
-        # Parse XML data
-        callback_data = xmltodict.parse(raw_body.decode())
-        body = callback_data.get("soapenv:Envelope", {}).get("soapenv:Body", {})
-        response = body.get("CheckoutResponse", {})
-
-        # Process transaction update
-        result_code = response.get("ResultCode")
-        checkout_id = response.get("CheckoutRequestID")
-        
-        if result_code == "0":
-            transaction = db.query(MpesaTransaction).filter_by(
-                checkout_request_id=checkout_id
-            ).first()
-
-            if transaction:
-                transaction.status = "completed"
-                transaction.merchant_request_id = response.get("MerchantRequestID")
-                transaction.result_code = result_code
-                transaction.result_desc = response.get("ResultDesc")
-                db.commit()
-                logger.info(f"Completed transaction {checkout_id}")
-            else:
-                logger.warning(f"Unknown transaction {checkout_id}")
-
-        return Response(content=XML_RESPONSES["success"], media_type="application/xml")
-
-    except Exception as e:
-        logger.error(f"Callback error: {str(e)}", exc_info=True)
-        return Response(content=XML_RESPONSES["error"], media_type="application/xml")

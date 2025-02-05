@@ -1,77 +1,60 @@
-import json
-import requests
+import os
 import base64
-from datetime import datetime
-from ..config import setting  # Assuming your settings (MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, etc.) are in a config file
+import datetime
+import requests
+from sqlalchemy.orm import Session
+from ..models import MpesaTransaction
+from..config import setting # Ensure you import the correct settings
 
-# Function to get M-Pesa access token
-def get_mpesa_token():
-    url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    auth = ("MY678jeKGHNhLGvgkq0BS0BHCrSDWHpP8zmSGhWEoTCdZYxf", "g0G8T6vhKEk5rAy3uXxCqLibZzwUO0D7VpBjIpDEOU1hL4RRg6V7N0PYPLxagvMU")
+# Load credentials from environment variables
+BUSINESS_SHORTCODE = setting.MPESA_SHORTCODE
+PASSKEY = setting.MPESA_PASSKEY
+CALLBACK_URL = setting.CALLBACK_URL
+
+def get_access_token():
+    """Fetch M-Pesa access token."""
+    auth_url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+    response = requests.get(auth_url, auth=(setting.MPESA_CONSUMER_KEY, setting.MPESA_CONSUMER_SECRET))
     
-    response = requests.get(url, auth=auth)
-
     if response.status_code == 200:
-        token = response.json().get('access_token')
-        print("Generated token:", token)  # Prints the token to verify
-        return token
-    else:
-        print(f"Failed to generate token: {response.text}")
-        raise Exception("Failed to generate token")
+        return response.json().get("access_token")
+    return None
 
-# Function to initiate STK push (Payment Request)
+def stk_push_request(phone_number: str, amount: int):
+    """Initiate Lipa na M-Pesa STK Push."""
+    access_token = get_access_token()
+    if not access_token:
+        return {"error": "Failed to obtain access token"}
 
-def get_mpesa_token():
-    url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    auth = ("MY678jeKGHNhLGvgkq0BS0BHCrSDWHpP8zmSGhWEoTCdZYxf", "g0G8T6vhKEk5rAy3uXxCqLibZzwUO0D7VpBjIpDEOU1hL4RRg6V7N0PYPLxagvMU")
-    
-    response = requests.get(url, auth=auth)
-    print(f"Token generation response: {response.text}")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    password = base64.b64encode(f"{BUSINESS_SHORTCODE}{PASSKEY}{timestamp}".encode()).decode()
 
-    if response.status_code == 200:
-        token = response.json().get('access_token')
-        print("Generated token:", token)
-        return token
-    else:
-        raise Exception("Failed to generate token")
-
-def stk_push_request(phone_number, amount):
-    access_token = get_mpesa_token()
-    
-    # Dynamically generate the timestamp
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    
-    url = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-    
-    headers = {
-        "Authorization": f"Bearer {access_token}"
-    }
-    
     payload = {
-        "BusinessShortCode": "174379",
-        "Password": "MTc0Mzc5YmZiMjc5ZjlhYTliZGJjZjE1OGU5N2RkNzFhNDY3Y2QyZTBjODkzMDU5YjEwZjc4ZTZiNzJhZGExZWQyYzkxOTIwMjUwMjA0MTEwMDU4",  # Base64 encoded
+        "BusinessShortCode": BUSINESS_SHORTCODE,
+        "Password": password,
         "Timestamp": timestamp,
         "TransactionType": "CustomerPayBillOnline",
         "Amount": amount,
         "PartyA": phone_number,
-        "PartyB": "174379",
+        "PartyB": BUSINESS_SHORTCODE,
         "PhoneNumber": phone_number,
-        "CallBackURL": "http://127.0.0.1:8000/mpesa/callback",
-        "AccountReference": "Test",
-        "TransactionDesc": "Payment"
+        "CallBackURL": CALLBACK_URL,
+        "AccountReference": "HospitalMgt",
+        "TransactionDesc": "Payment for services"
     }
 
-    print(f"Request Headers: {headers}")
-    print(f"Request Payload: {payload}")
-    
-    response = requests.post(url, json=payload, headers=headers)
-    
-    print(f"Response Status Code: {response.status_code}")
-    print(f"Response Body: {response.text}")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(
+        "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
+        json=payload,
+        headers=headers
+    )
 
     if response.status_code == 200:
-        print("Payment initiated successfully!")
         return response.json()
-    else:
-        print(f"Failed to initiate STK Push, Status Code: {response.status_code}, Response: {response.text}")
-        raise Exception(f"Error initiating payment: {response.status_code} - {response.text}")
+    
+    return {"error": "Failed to initiate payment"}

@@ -1,11 +1,10 @@
 import logging
-from fastapi import APIRouter, HTTPException, Depends, Request, Response
+import xmltodict
+from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import MpesaTransaction
-from .mpesa_aouth import stk_push_request
-import xmltodict
-
+from .mpesa_aouth import stk_push_request  # Ensure correct import
 
 router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
 logger = logging.getLogger(__name__)
@@ -35,7 +34,7 @@ XML_RESPONSES = {
 }
 
 def normalize_phone_number(phone_number: str) -> str:
-    """Normalize Kenyan phone numbers to 2547XXXXXXXX format"""
+    """Normalize Kenyan phone numbers to 2547XXXXXXXX format."""
     digits = "".join(filter(str.isdigit, str(phone_number)))  # Ensure string conversion
     
     if len(digits) == 9 and digits.startswith("7"):
@@ -48,9 +47,9 @@ def normalize_phone_number(phone_number: str) -> str:
 
 @router.post("/pay")
 async def initiate_payment(request: Request, db: Session = Depends(get_db)):
-    """Process payment requests with M-Pesa STK Push"""
+    """Process payment requests with M-Pesa STK Push."""
     try:
-        data = await request.json()  # Extract JSON data directly
+        data = await request.json()
         phone_number = data.get("phone_number")
         amount = data.get("amount")
 
@@ -58,7 +57,6 @@ async def initiate_payment(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Phone number and amount are required")
 
         phone_number = normalize_phone_number(phone_number)
-
         logger.info(f"Initiating payment for {phone_number}, Amount: {amount}")
 
         # Process payment request

@@ -4,7 +4,7 @@ import datetime
 import requests
 from sqlalchemy.orm import Session
 from ..models import MpesaTransaction
-from..config import setting # Ensure you import the correct settings
+from..config import setting
 
 # Load credentials from environment variables
 BUSINESS_SHORTCODE = setting.MPESA_SHORTCODE

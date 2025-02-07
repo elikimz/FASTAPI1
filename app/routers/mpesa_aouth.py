@@ -42,6 +42,7 @@ def stk_push_request(phone_number: str, amount: int):
         "AccountReference": "HospitalMgt",
         "TransactionDesc": "Payment for services"
     }
+    
 
     headers = {
         "Authorization": f"Bearer {access_token}",

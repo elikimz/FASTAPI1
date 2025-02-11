@@ -26,12 +26,16 @@ def generate_password():
 @router.post("/stk_push/")
 async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depends(get_db)):
     access_token = await get_mpesa_token()
+    print(f"Access Token Used: {access_token}")  # Debug token
+
     password, timestamp = generate_password()
+    print(f"Generated Password: {password}, Timestamp: {timestamp}")  # Debug password
 
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
+    print(f"Headers Sent: {headers}")  # Debug headers
 
     payload = {
         "BusinessShortCode": setting.MPESA_SHORTCODE,
@@ -46,9 +50,12 @@ async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depend
         "AccountReference": "FastAPI Payment",
         "TransactionDesc": "Payment for goods"
     }
+    print(f"Payload Sent: {payload}")  # Debug payload
 
     async with httpx.AsyncClient() as client:
         response = await client.post(f"{setting.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
+        print(f"STK Push Response: {response.status_code}, {response.text}")  # Debug response
+        
         res_data = response.json()
 
         # Save transaction in DB

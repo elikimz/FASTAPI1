@@ -80,8 +80,10 @@ async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depend
 @router.api_route("/callback", methods=["GET", "POST"])
 async def mpesa_callback(request: Request):
     if request.method == "GET":
-        return {"message": "GET request received"}
+        logging.info("Received GET request (likely a health check from Safaricom)")
+        return {"message": "GET request received, URL is live"}
 
+    # Handle POST request (actual transaction callback)
     body = await request.body()
     logging.info(f"Raw callback body: {body.decode('utf-8')}")
 

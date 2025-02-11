@@ -77,18 +77,18 @@ async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depend
         return {"message": "STK Push initiated", "transaction": res_data}
 
 
-@router.post("/callback")
+@router.api_route("/callback", methods=["GET", "POST"])
 async def mpesa_callback(request: Request):
-    try:
-        body = await request.body()
-        logging.info(f"Raw callback body: {body}")
+    if request.method == "GET":
+        return {"message": "GET request received"}
 
+    body = await request.body()
+    logging.info(f"Raw callback body: {body.decode('utf-8')}")
+
+    try:
         data = await request.json()
         logging.info(f"Parsed JSON: {data}")
-
-        # Process the data...
         return {"ResultCode": 0, "ResultDesc": "Accepted"}
-
     except Exception as e:
         logging.error(f"Error processing callback: {e}")
         return {"ResultCode": 1, "ResultDesc": "Error"}

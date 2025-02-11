@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -7,7 +8,9 @@ from ..models import MpesaTransaction
 from .mpesa_aouth import get_mpesa_token
 from ..config import setting
 
-router = APIRouter()
+router = APIRouter(
+    tags=["Mpesa"]
+)
 
 # Dependency to get DB session
 def get_db():
@@ -75,19 +78,17 @@ async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depend
 
 
 @router.post("/callback")
-async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
-    data = await request.json()
-    print("Callback data:", data)  # For debugging
+async def mpesa_callback(request: Request):
+    try:
+        body = await request.body()
+        logging.info(f"Raw callback body: {body}")
 
-    # Extract relevant data
-    result_code = data['Body']['stkCallback']['ResultCode']
-    checkout_request_id = data['Body']['stkCallback']['CheckoutRequestID']
+        data = await request.json()
+        logging.info(f"Parsed JSON: {data}")
 
-    # Update the transaction status in the DB
-    transaction = db.query(MpesaTransaction).filter_by(checkout_request_id=checkout_request_id).first()
-    if transaction:
-        transaction.status = "success" if result_code == 0 else "failed"
-        transaction.result_code = result_code
-        db.commit()
+        # Process the data...
+        return {"ResultCode": 0, "ResultDesc": "Accepted"}
 
-    return {"ResultCode": 0, "ResultDesc": "Accepted"}
+    except Exception as e:
+        logging.error(f"Error processing callback: {e}")
+        return {"ResultCode": 1, "ResultDesc": "Error"}

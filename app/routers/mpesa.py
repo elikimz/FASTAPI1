@@ -74,22 +74,20 @@ async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depend
         return {"message": "STK Push initiated", "transaction": res_data}
 
 
-@router.post("/callback/")
+@router.post("/callback")
 async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
     data = await request.json()
-    callback_metadata = data.get('Body', {}).get('stkCallback', {})
-    checkout_request_id = callback_metadata.get('CheckoutRequestID')
-    result_code = callback_metadata.get('ResultCode')
+    print("Callback data:", data)  # For debugging
 
-    # Find the transaction in DB
+    # Extract relevant data
+    result_code = data['Body']['stkCallback']['ResultCode']
+    checkout_request_id = data['Body']['stkCallback']['CheckoutRequestID']
+
+    # Update the transaction status in the DB
     transaction = db.query(MpesaTransaction).filter_by(checkout_request_id=checkout_request_id).first()
-    
     if transaction:
-        transaction.status = 'success' if result_code == 0 else 'failed'
+        transaction.status = "success" if result_code == 0 else "failed"
         transaction.result_code = result_code
-        transaction.transaction_date = datetime.now()
         db.commit()
-    else:
-        return {"message": "Transaction not found"}
 
-    return {"message": "Callback processed"}
+    return {"ResultCode": 0, "ResultDesc": "Accepted"}

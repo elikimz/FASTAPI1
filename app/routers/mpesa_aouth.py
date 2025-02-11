@@ -1,61 +1,69 @@
-import os
+from fastapi import FastAPI, Request
+import httpx
 import base64
-import datetime
-import requests
-from sqlalchemy.orm import Session
-from ..models import MpesaTransaction
-from..config import setting
+import os
+from dotenv import load_dotenv
+from datetime import datetime
 
-# Load credentials from environment variables
-BUSINESS_SHORTCODE = setting.MPESA_SHORTCODE
-PASSKEY = setting.MPESA_PASSKEY
-CALLBACK_URL = setting.CALLBACK_URL
+load_dotenv()
 
-def get_access_token():
-    """Fetch M-Pesa access token."""
-    auth_url = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-    response = requests.get(auth_url, auth=(setting.MPESA_CONSUMER_KEY, setting.MPESA_CONSUMER_SECRET))
-    
-    if response.status_code == 200:
-        return response.json().get("access_token")
-    return None
+app = FastAPI()
 
-def stk_push_request(phone_number: str, amount: int):
-    """Initiate Lipa na M-Pesa STK Push."""
-    access_token = get_access_token()
-    if not access_token:
-        return {"error": "Failed to obtain access token"}
+# Load environment variables
+CONSUMER_KEY = os.getenv("MPESA_CONSUMER_KEY")
+CONSUMER_SECRET = os.getenv("MPESA_CONSUMER_SECRET")
+SHORTCODE = os.getenv("MPESA_SHORTCODE")
+PASSKEY = os.getenv("MPESA_PASSKEY")
+BASE_URL = os.getenv("MPESA_BASE_URL")
+CALLBACK_URL = os.getenv("CALLBACK_URL")
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-    password = base64.b64encode(f"{BUSINESS_SHORTCODE}{PASSKEY}{timestamp}".encode()).decode()
 
-    payload = {
-        "BusinessShortCode": BUSINESS_SHORTCODE,
-        "Password": password,
-        "Timestamp": timestamp,
-        "TransactionType": "CustomerPayBillOnline",
-        "Amount": amount,
-        "PartyA": phone_number,
-        "PartyB": BUSINESS_SHORTCODE,
-        "PhoneNumber": phone_number,
-        "CallBackURL": CALLBACK_URL,
-        "AccountReference": "HospitalMgt",
-        "TransactionDesc": "Payment for services"
-    }
-    
+async def get_access_token():
+    url = f"{BASE_URL}/oauth/v1/generate?grant_type=client_credentials"
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, auth=(CONSUMER_KEY, CONSUMER_SECRET))
+        response_data = response.json()
+        return response_data["access_token"]
+
+
+def generate_password():
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    data_to_encode = SHORTCODE + PASSKEY + timestamp
+    encoded_password = base64.b64encode(data_to_encode.encode()).decode('utf-8')
+    return encoded_password, timestamp
+
+
+@app.post("/stk_push/")
+async def stk_push(phone_number: str, amount: int):
+    access_token = await get_access_token()
+    password, timestamp = generate_password()
 
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
 
-    response = requests.post(
-        "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest",
-        json=payload,
-        headers=headers
-    )
+    payload = {
+        "BusinessShortCode": SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": amount,
+        "PartyA": phone_number,
+        "PartyB": SHORTCODE,
+        "PhoneNumber": phone_number,
+        "CallBackURL": CALLBACK_URL,
+        "AccountReference": "TestPayment",
+        "TransactionDesc": "Payment for goods"
+    }
 
-    if response.status_code == 200:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
         return response.json()
-    
-    return {"error": "Failed to initiate payment"}
+
+
+@app.post("/callback/")
+async def mpesa_callback(request: Request):
+    callback_data = await request.json()
+    print("Callback received:", callback_data)
+    return {"message": "Callback received successfully"}

@@ -1,63 +1,88 @@
-# from pydantic import BaseModel 
-# import logging
-# from fastapi import APIRouter, HTTPException, Depends
-# from sqlalchemy.orm import Session
-# from ..database import get_db
-# from ..models import MpesaTransaction
-# from .mpesa_aouth import stk_push_request
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
+from datetime import datetime
+import base64, httpx
+from ..database import SessionLocal
+from ..models import MpesaTransaction
+from .mpesa_aouth import get_mpesa_token
+from ..config import setting
 
-# router = APIRouter(prefix="/mpesa", tags=["M-Pesa"])
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
+router = APIRouter()
 
-# class PaymentRequest(BaseModel):
-#     phone_number: str
-#     amount: float
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-# def normalize_phone_number(phone_number: str) -> str:
-#     """Normalize Kenyan phone numbers to 2547XXXXXXXX format."""
-#     digits = "".join(filter(str.isdigit, str(phone_number)))
+def generate_password():
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    data_to_encode = f"{setting.MPESA_SHORTCODE}{setting.MPESA_PASSKEY}{timestamp}"
+    encoded_password = base64.b64encode(data_to_encode.encode()).decode('utf-8')
+    return encoded_password, timestamp
+
+@router.post("/stk_push/")
+async def initiate_stk_push(phone_number: str, amount: int, db: Session = Depends(get_db)):
+    access_token = await get_mpesa_token()
+    password, timestamp = generate_password()
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "BusinessShortCode": setting.MPESA_SHORTCODE,
+        "Password": password,
+        "Timestamp": timestamp,
+        "TransactionType": "CustomerPayBillOnline",
+        "Amount": amount,
+        "PartyA": phone_number,
+        "PartyB": setting.MPESA_SHORTCODE,
+        "PhoneNumber": phone_number,
+        "CallBackURL": setting.CALLBACK_URL,
+        "AccountReference": "FastAPI Payment",
+        "TransactionDesc": "Payment for goods"
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{setting.MPESA_BASE_URL}/mpesa/stkpush/v1/processrequest", json=payload, headers=headers)
+        res_data = response.json()
+
+        # Save transaction in DB
+        transaction = MpesaTransaction(
+            merchant_request_id=res_data.get('MerchantRequestID'),
+            checkout_request_id=res_data.get('CheckoutRequestID'),
+            amount=amount,
+            phone_number=phone_number,
+            status='pending',
+            created_at=datetime.now()
+        )
+        db.add(transaction)
+        db.commit()
+        db.refresh(transaction)
+
+        return {"message": "STK Push initiated", "transaction": res_data}
+
+
+@router.post("/callback/")
+async def mpesa_callback(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    callback_metadata = data.get('Body', {}).get('stkCallback', {})
+    checkout_request_id = callback_metadata.get('CheckoutRequestID')
+    result_code = callback_metadata.get('ResultCode')
+
+    # Find the transaction in DB
+    transaction = db.query(MpesaTransaction).filter_by(checkout_request_id=checkout_request_id).first()
     
-#     if len(digits) == 9 and digits.startswith("7"):
-#         return f"254{digits}"
-#     elif len(digits) == 10 and digits.startswith("0"):
-#         return f"254{digits[1:]}"
-#     elif len(digits) == 12 and digits.startswith("254"):
-#         return digits
-#     raise ValueError("Invalid phone number format. Use 07XXXXXXXX or 2547XXXXXXXX")
+    if transaction:
+        transaction.status = 'success' if result_code == 0 else 'failed'
+        transaction.result_code = result_code
+        transaction.transaction_date = datetime.now()
+        db.commit()
+    else:
+        return {"message": "Transaction not found"}
 
-# @router.post("/pay")
-# async def initiate_payment(
-#     request: PaymentRequest, 
-#     db: Session = Depends(get_db)
-# ):
-#     """Process payment requests with M-Pesa STK Push."""
-#     try:
-#         phone_number = normalize_phone_number(request.phone_number)
-#         amount = request.amount
-
-#         logger.info(f"Initiating payment for {phone_number}, Amount: {amount}")
-
-#         stk_response = stk_push_request(phone_number, amount)
-
-#         if stk_response.get("ResponseCode") != "0":
-#             raise HTTPException(status_code=400, detail=stk_response.get("errorMessage", "Payment failed"))
-
-#         transaction = MpesaTransaction(
-#             phone_number=phone_number,
-#             amount=amount,
-#             checkout_request_id=stk_response["CheckoutRequestID"],
-#             status="pending"
-#         )
-#         db.add(transaction)
-#         db.commit()
-
-#         return {"message": "Payment initiated", "checkout_id": stk_response["CheckoutRequestID"]}
-
-#     except ValueError as e:
-#         logger.error(f"Validation error: {str(e)}")
-#         raise HTTPException(status_code=422, detail=str(e))
-#     except Exception as e:
-#         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-#         db.rollback()
-#         raise HTTPException(status_code=500, detail="Internal server error")
+    return {"message": "Callback processed"}

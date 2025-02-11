@@ -4,19 +4,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 class Setting(BaseSettings): 
- database_port: int 
- database_username: str 
- database_hostname: str 
- database_password: str 
- database_name: str 
- secret_key: str 
- algorithm: str 
- access_token_expire_minutes: int   
- MPESA_CONSUMER_KEY :str
+ database_port:int 
+ database_username:str 
+ database_hostname:str 
+ database_password:str 
+ database_name:str 
+ secret_key:str 
+ algorithm:str 
+ access_token_expire_minutes:int   
+ MPESA_CONSUMER_KEY:str
  MPESA_CONSUMER_SECRET:str
  MPESA_SHORTCODE:str
  MPESA_PASSKEY:str
  CALLBACK_URL:str
+ MPESA_BASE_URL:str
 
 
     
